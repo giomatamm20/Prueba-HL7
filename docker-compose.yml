@@ -1,44 +1,16 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-hl7sandbox}
-      POSTGRES_USER: ${POSTGRES_USER:-hl7user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hl7password}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-    networks:
-      - sandbox-network
-
-  hl7-listener:
+  fake-analyzer:
     build:
-      context: ./services/hl7-listener
+      context: ./services/fake-analyzer
     environment:
-      LISTEN_HOST: 0.0.0.0
-      LISTEN_PORT: 2575
-      DATABASE_URL: postgresql://${POSTGRES_USER:-hl7user}:${POSTGRES_PASSWORD:-hl7password}@postgres:5432/${POSTGRES_DB:-hl7sandbox}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "${HL7_LISTENER_PORT:-2575}:2575"
-    networks:
-      - sandbox-network
-    healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost', 2575), 2); s.close()"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-
-networks:
-  sandbox-network:
-    name: hl7-sandbox-network
-
-volumes:
-  postgres-data:
+      DESTINATION_HOST: ${HOST_MIDDLEWARE_HOST:?Set HOST_MIDDLEWARE_HOST to the PC running the HL7 host}
+      DESTINATION_PORT: ${HOST_MIDDLEWARE_PORT:-2575}
+      SEND_INTERVAL_SECONDS: ${SEND_INTERVAL_SECONDS:-10}
+      ACK_TIMEOUT_SECONDS: ${ACK_TIMEOUT_SECONDS:-8}
+      RETRY_DELAY_SECONDS: ${RETRY_DELAY_SECONDS:-5}
+      ANALYZER_NAME: ${ANALYZER_NAME:-ABBOTT_CELL_DYN}
+      SAMPLES_DIR: /app/samples
+    volumes:
+      - ./samples/hl7:/app/samples:ro
+    command: ["python", "-m", "app.main", "auto"]
+    restart: unless-stopped
