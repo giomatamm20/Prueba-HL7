@@ -5,4 +5,3 @@ WORKDIR /app
 COPY app ./app
 
 CMD ["python", "-m", "app.main", "auto"]
-

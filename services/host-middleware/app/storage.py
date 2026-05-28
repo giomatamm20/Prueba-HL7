@@ -221,4 +221,3 @@ class CrmStore:
             with connection.cursor() as cursor:
                 cursor.execute(sql, parameters)
                 return [dict(row) for row in cursor.fetchall()]
-

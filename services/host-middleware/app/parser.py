@@ -141,4 +141,3 @@ def build_ack(
         + (f"|{error_message[:160]}" if error_message else ""),
     ]
     return "\r".join(segments) + "\r"
-

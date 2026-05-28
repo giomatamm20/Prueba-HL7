@@ -64,4 +64,3 @@ def orders() -> list[dict]:
 @app.get("/api/results")
 def results(limit: int = Query(default=100, ge=1, le=500)) -> list[dict]:
     return store.results(limit)
-

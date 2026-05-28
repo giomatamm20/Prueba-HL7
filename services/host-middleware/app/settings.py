@@ -29,4 +29,3 @@ WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.environ.get("WEB_PORT", "8088"))
 SCHEMA_FILE = PROJECT_ROOT / "database" / "init.sql"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-
