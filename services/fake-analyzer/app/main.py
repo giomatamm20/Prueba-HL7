@@ -16,12 +16,12 @@ SEND_INTERVAL_SECONDS = float(os.environ.get("SEND_INTERVAL_SECONDS", "10"))
 ACK_TIMEOUT_SECONDS = float(os.environ.get("ACK_TIMEOUT_SECONDS", "8"))
 RETRY_DELAY_SECONDS = float(os.environ.get("RETRY_DELAY_SECONDS", "5"))
 ANALYZER_NAME = os.environ.get("ANALYZER_NAME", "ABBOTT_CELL_DYN")
-SAMPLES_DIR = Path(
-    os.environ.get(
-        "SAMPLES_DIR",
-        str(Path(__file__).resolve().parents[3] / "samples" / "hl7"),
-    )
-)
+
+if "SAMPLES_DIR" in os.environ:
+    SAMPLES_DIR = Path(os.environ["SAMPLES_DIR"])
+else:
+    local_project_root = Path(__file__).resolve().parents[3]
+    SAMPLES_DIR = local_project_root / "samples" / "hl7"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOGGER = logging.getLogger("fake-analyzer")
