@@ -26,11 +26,13 @@ flujo en un frontend simple.
 En este laboratorio la PC local es `192.168.1.101` y el servidor es
 `192.168.1.122`.
 
-## 1. PC Local: Host/Middleware + CRM + Frontend
+## 1. PC Local: Host/Middleware CodeIgniter + CRM + Frontend
 
 Requisitos locales:
 
-- Python 3.11
+- PHP 8.1+
+- Composer
+- Extension PHP `pdo_pgsql`
 - PostgreSQL local
 - Acceso entrante desde el servidor al puerto `2575`
 
@@ -62,22 +64,30 @@ $psql='C:\Program Files\PostgreSQL\17\bin\psql.exe'
 Instalar dependencias:
 
 ```powershell
-py -3.11 -m venv .venv-host
-.\.venv-host\Scripts\python.exe -m pip install -r services\host-middleware\requirements.txt
+Push-Location services\host-codeigniter
+composer install
+Copy-Item .env.example .env
+Pop-Location
 ```
 
-Arrancar host/middleware desde la PC:
+Arrancar API/dashboard desde la PC:
 
 ```powershell
-Push-Location services\host-middleware
-..\..\.venv-host\Scripts\python.exe -m app.run
-Pop-Location
+Push-Location services\host-codeigniter
+php spark serve --host 0.0.0.0 --port 8088
 ```
 
 Abrir dashboard:
 
 ```text
 http://localhost:8088
+```
+
+Arrancar el listener HL7 MLLP en otra terminal:
+
+```powershell
+Push-Location services\host-codeigniter
+php spark hl7:mllp-listen
 ```
 
 El host mantiene dos responsabilidades activas:
@@ -205,14 +215,16 @@ El dashboard consume:
 | --- | --- |
 | `docker-compose.yml` | Analyzer Docker del servidor Linux. |
 | `services/fake-analyzer/app/main.py` | Cliente TCP/MLLP que simula el equipo medico. |
-| `services/host-middleware/app/mllp.py` | Listener MLLP, procesamiento y ACK/NAK. |
-| `services/host-middleware/app/parser.py` | Parser `ORM^O01` y `ORU^R01`. |
-| `services/host-middleware/app/storage.py` | Persistencia CRM/LIS en PostgreSQL. |
-| `services/host-middleware/app/static/index.html` | Frontend de monitoreo. |
+| `services/host-codeigniter/app/Commands/MllpListen.php` | Listener MLLP, procesamiento y ACK/NAK. |
+| `services/host-codeigniter/app/Libraries/Hl7Parser.php` | Parser `ORM^O01` y `ORU^R01`. |
+| `services/host-codeigniter/app/Models/CrmStore.php` | Persistencia CRM/LIS en PostgreSQL. |
+| `services/host-codeigniter/app/Views/dashboard.php` | Frontend de monitoreo. |
 | `database/init.sql` | Esquema PostgreSQL local. |
 
 ## Pruebas
 
 ```powershell
-.\.venv-host\Scripts\python.exe -m unittest discover -s services\host-middleware\tests -v
+Push-Location services\host-codeigniter
+composer install
+php spark routes
 ```

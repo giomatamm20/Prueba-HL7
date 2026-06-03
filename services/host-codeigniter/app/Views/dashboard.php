@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>HL7 Host Middleware</title>
+  <style>
+    :root { --bg: #f3f7f7; --card: #fff; --ink: #163135; --muted: #5d7377; --ok: #087f5b; --bad: #c92a2a; --line: #dae5e5; --accent: #126b78; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px Arial, sans-serif; color: var(--ink); background: var(--bg); }
+    header { background: #103f49; color: white; padding: 20px 28px; display: flex; justify-content: space-between; align-items: center; }
+    h1 { margin: 0; font-size: 22px; } header p { margin: 5px 0 0; color: #d3e4e6; }
+    .badge { padding: 8px 12px; border-radius: 18px; font-weight: bold; background: #294f57; }
+    .badge.ok { background: var(--ok); } .badge.bad { background: var(--bad); }
+    main { padding: 20px; max-width: 1500px; margin: auto; }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(135px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 14px; box-shadow: 0 1px 2px #0000000d; }
+    .metric label { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px; }
+    .metric strong { font-size: 26px; }
+    .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
+    h2 { font-size: 16px; margin: 0 0 12px; color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 7px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-weight: normal; text-transform: uppercase; font-size: 11px; }
+    .scroll { max-height: 320px; overflow: auto; }
+    pre { background: #122a30; color: #e8f2f2; border-radius: 6px; padding: 10px; white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; font-size: 12px; }
+    details summary { cursor: pointer; color: var(--accent); }
+    .ack-AA { color: var(--ok); font-weight: bold; } .ack-AE { color: var(--bad); font-weight: bold; }
+    @media (max-width: 900px) { .metrics, .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>HL7 Host / CRM Monitor</h1><p>MLLP receiver, ACK and clinical result processing</p></div>
+    <div id="connection" class="badge">Esperando analyzer</div>
+  </header>
+  <main>
+    <section class="metrics">
+      <div class="card metric"><label>Mensajes</label><strong id="messagesCount">0</strong></div>
+      <div class="card metric"><label>Procesados</label><strong id="processedCount">0</strong></div>
+      <div class="card metric"><label>Rechazados</label><strong id="rejectedCount">0</strong></div>
+      <div class="card metric"><label>Ultimo ACK</label><strong id="ackCode">-</strong></div>
+      <div class="card metric"><label>Origen</label><strong id="sourceIp" style="font-size:18px">-</strong></div>
+    </section>
+    <section class="grid">
+      <article class="card">
+        <h2>Mensajes HL7 recibidos y ACK</h2>
+        <div id="messages" class="scroll"></div>
+      </article>
+      <article class="card">
+        <h2>Resultados procesados</h2>
+        <div class="scroll"><table><thead><tr><th>Paciente</th><th>Orden</th><th>Prueba</th><th>Valor</th><th>Fecha</th></tr></thead><tbody id="results"></tbody></table></div>
+      </article>
+      <article class="card">
+        <h2>Pacientes</h2>
+        <table><thead><tr><th>ID</th><th>Nombre</th><th>Actualizado</th></tr></thead><tbody id="patients"></tbody></table>
+      </article>
+      <article class="card">
+        <h2>Ordenes / Paneles</h2>
+        <table><thead><tr><th>Orden</th><th>Paciente</th><th>Panel</th><th>Mensaje</th></tr></thead><tbody id="orders"></tbody></table>
+      </article>
+    </section>
+  </main>
+  <script>
+    const el = id => document.getElementById(id);
+    const fmt = value => value ? new Date(value).toLocaleString() : "-";
+    const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    async function get(path) { const r = await fetch(path); if (!r.ok) throw Error(path); return r.json(); }
+    async function refresh() {
+      try {
+        const [status, messages, patients, orders, results] = await Promise.all([
+          get("/api/status"), get("/api/messages?limit=20"), get("/api/patients"), get("/api/orders"), get("/api/results?limit=40")
+        ]);
+        const connected = Boolean(status.listener.lastConnectionAt);
+        el("connection").textContent = connected ? "Analyzer conectado / activo" : "Esperando analyzer";
+        el("connection").className = "badge " + (connected ? "ok" : "");
+        el("messagesCount").textContent = status.database.message_count;
+        el("processedCount").textContent = status.database.processed_count;
+        el("rejectedCount").textContent = status.database.rejected_count;
+        el("ackCode").textContent = status.listener.lastAckCode || "-";
+        el("sourceIp").textContent = status.listener.lastSourceIp || "-";
+        el("messages").innerHTML = messages.map(m => `<details><summary>${fmt(m.received_at)} | ${esc(m.message_type)} | ${esc(m.message_control_id)} | <span class="ack-${esc(m.ack_code)}">${esc(m.ack_code)}</span></summary><pre>${esc(m.raw_message)}</pre><pre>${esc(m.ack_message)}</pre></details>`).join("");
+        el("patients").innerHTML = patients.map(p => `<tr><td>${esc(p.patient_external_id)}</td><td>${esc(p.full_name)}</td><td>${fmt(p.updated_at)}</td></tr>`).join("");
+        el("orders").innerHTML = orders.map(o => `<tr><td>${esc(o.order_external_id)}</td><td>${esc(o.patient_external_id)}</td><td>${esc(o.panel_code)}</td><td>${esc(o.last_message_type)}</td></tr>`).join("");
+        el("results").innerHTML = results.map(r => `<tr><td>${esc(r.patient_external_id)}</td><td>${esc(r.order_external_id)}</td><td>${esc(r.test_code)}</td><td>${esc(r.value_text)} ${esc(r.unit)}</td><td>${fmt(r.observed_at)}</td></tr>`).join("");
+      } catch (error) {
+        el("connection").textContent = "Host sin respuesta";
+        el("connection").className = "badge bad";
+      }
+    }
+    refresh();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>
