@@ -5,16 +5,16 @@ Simulacion realista del flujo de laboratorio clinico:
 ```text
 Servidor Linux con Docker                  PC Windows local
 ----------------------------------         --------------------------------------
-Fake Medical Analyzer / Middleware  ---->  Host HL7 MLLP listener
-ABBOTT_CELL_DYN por TCP/MLLP               ACK/NAK + parser HL7
+Analyzer Simulation Lab / Mirth     ---->  Host HL7 MLLP listener
+HL7 MLLP / ASTM simulado                   ACK/NAK + parser HL7
 ORU^R01 resultados                         JSON/modelos internos
-ORM^O01 ordenes                            PostgreSQL CRM/LIS
-                                            Dashboard web
+ORM/OML ordenes                            PostgreSQL CRM/LIS
+UI de analizadores                         Dashboard web
 ```
 
-El equipo medico simulado vive en el servidor Linux. La PC local actua como
-host/middleware receptor, procesa ACK/NAK, persiste datos clinicos y muestra el
-flujo en un frontend simple.
+El equipo medico simulado vive en el servidor Linux o en Docker local. La PC
+local actua como host/middleware receptor, procesa ACK/NAK, persiste datos
+clinicos y muestra el flujo en un frontend simple.
 
 ## Puertos
 
@@ -22,6 +22,13 @@ flujo en un frontend simple.
 | --- | --- | --- |
 | PC local | `2575/tcp` | Listener HL7 MLLP que recibe al analyzer. |
 | PC local | `8088/tcp` | Dashboard y API REST del host/CRM. |
+| Docker/local | `8090/tcp` | Analyzer Simulation Lab UI/API. |
+| Docker/local | `5001/tcp` | Listener ordenes HL7 CELL-DYN Ruby. |
+| Docker/local | `5002/tcp` | Listener ordenes HL7 XN-1000. |
+| Docker/local | `5003/tcp` | Listener ordenes HL7 ARCHITECT ci4100. |
+| Docker/local | `5004/tcp` | Listener ordenes ASTM UC-3500. |
+| Docker/local | `5010/tcp` | Listener ordenes HL7 generico. |
+| Docker/local | `5011/tcp` | Listener ordenes ASTM generico. |
 
 En este laboratorio la PC local es `192.168.1.101` y el servidor es
 `192.168.1.122`.
@@ -95,7 +102,78 @@ El host mantiene dos responsabilidades activas:
 - Socket HL7 MLLP en `0.0.0.0:2575`.
 - API/dashboard en `0.0.0.0:8088`.
 
-## 2. Servidor Linux: Analyzer HL7
+## 2. Analyzer Simulation Lab: Modo manual HL7 ORU
+
+El nuevo simulador vive en `services/analyzer-simulator-api` y expone una UI en:
+
+```text
+http://localhost:8090
+```
+
+Permite crear muestras manuales, seleccionar analizador, seleccionar pruebas,
+cargar la muestra, procesarla y enviar un resultado `ORU^R01` por MLLP hacia
+Mirth o directamente hacia el host CodeIgniter. Tambien abre listeners MLLP por
+analizador HL7 para recibir ordenes `ORM^O01` / `OML^O33`, responder ACK/NACK y
+crear worklist bidireccional.
+
+Regla de operacion:
+
+- En modo `MANUAL`, el simulador crea `sampleId`/barcode y no depende de orden
+  externa.
+- En modo `BIDIRECTIONAL`, la orden y el barcode vienen desde LIS/Mirth; la UI
+  solo permite cargar la muestra si el barcode existe en la worklist.
+
+Configurar destino del resultado en `.env`:
+
+```env
+ANALYZER_SIMULATOR_PORT=8090
+RESULT_DESTINATION_HOST=host.docker.internal
+RESULT_DESTINATION_PORT=2575
+ABBOTT_RUBY_ORDER_PORT=5001
+SYSMEX_XN_ORDER_PORT=5002
+ARCHITECT_ORDER_PORT=5003
+SYSMEX_UC_ASTM_ORDER_PORT=5004
+GENERIC_HL7_ORDER_PORT=5010
+GENERIC_ASTM_ORDER_PORT=5011
+ORDER_LISTENERS_ENABLED=true
+```
+
+Levantar solo el simulador:
+
+```powershell
+docker compose up --build analyzer-simulator-api
+```
+
+API principal:
+
+| Endpoint | Uso |
+| --- | --- |
+| `GET /api/dashboard` | Conteos del laboratorio simulado. |
+| `GET /api/analyzers` | Analizadores configurados y estado. |
+| `POST /api/analyzers` | Agregar un analizador simulado. |
+| `PUT /api/analyzers/{id}` | Editar protocolo, puertos, destino y pruebas. |
+| `PATCH /api/analyzers/{id}/mode` | Cambiar entre `MANUAL` y `BIDIRECTIONAL`. |
+| `PATCH /api/analyzers/{id}/state` | Cambiar estado interno del equipo. |
+| `PATCH /api/analyzers/{id}/scenario` | Forzar escenario interno del analizador. |
+| `GET /api/orders` | Worklist/cola manual. |
+| `GET /api/messages` | Mensajes HL7 enviados, ACK y errores. |
+| `POST /api/manual-samples` | Crear muestra manual. |
+| `POST /api/analyzers/{id}/scan` | Cargar muestra escaneando barcode. |
+| `POST /api/orders/{id}/load` | Simular carga/escaneo de muestra. |
+| `POST /api/orders/{id}/process` | Procesar y enviar resultado. |
+
+Puertos de ordenes HL7 hacia el simulador:
+
+| Puerto | Analizador |
+| --- | --- |
+| `5001` | CELL-DYN Ruby |
+| `5002` | Sysmex XN-1000 |
+| `5003` | Abbott ARCHITECT ci4100 |
+| `5004` | Sysmex UC-3500 ASTM |
+| `5010` | Equipo generico HL7 |
+| `5011` | Equipo generico ASTM |
+
+## 3. Servidor Linux: Analyzer HL7 legado
 
 En el servidor:
 
@@ -116,7 +194,7 @@ RETRY_DELAY_SECONDS=5
 ANALYZER_NAME=ABBOTT_CELL_DYN
 ```
 
-Levantar el analyzer:
+Levantar el analyzer legado:
 
 ```bash
 docker compose up --build -d --remove-orphans
@@ -214,6 +292,14 @@ El dashboard consume:
 | Archivo | Rol |
 | --- | --- |
 | `docker-compose.yml` | Analyzer Docker del servidor Linux. |
+| `services/analyzer-simulator-api/app/main.py` | API del Analyzer Simulation Lab. |
+| `services/analyzer-simulator-api/app/engine.py` | Motor de simulacion, estados y resultados. |
+| `services/analyzer-simulator-api/app/store.py` | Persistencia interna SQLite del simulador. |
+| `services/analyzer-simulator-api/app/astm.py` | Generador ASTM y envio TCP simulado. |
+| `services/analyzer-simulator-api/app/hl7_orders.py` | Parser de ordenes `ORM^O01` / `OML^O33` y ACK. |
+| `services/analyzer-simulator-api/app/listeners.py` | Listeners MLLP de ordenes por analizador. |
+| `services/analyzer-simulator-api/app/protocols.py` | HL7 ORU y cliente MLLP. |
+| `services/analyzer-simulator-api/app/static/index.html` | UI grafica del laboratorio simulado. |
 | `services/fake-analyzer/app/main.py` | Cliente TCP/MLLP que simula el equipo medico. |
 | `services/host-codeigniter/app/Commands/MllpListen.php` | Listener MLLP, procesamiento y ACK/NAK. |
 | `services/host-codeigniter/app/Libraries/Hl7Parser.php` | Parser `ORM^O01` y `ORU^R01`. |

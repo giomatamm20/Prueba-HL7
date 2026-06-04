@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Analyzer Simulation Lab</title>
+  <style>
+    :root { --bg:#eef4f5; --ink:#15272b; --muted:#5e7176; --panel:#fff; --line:#cfdcde; --accent:#0f7280; --ok:#087f5b; --warn:#b76e00; --bad:#c92a2a; --soft:#e8f1f2; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font:14px Arial,sans-serif; }
+    header { padding:18px 24px; background:#103f49; color:#fff; display:flex; justify-content:space-between; gap:18px; align-items:center; }
+    h1 { margin:0; font-size:22px; }
+    header p { margin:4px 0 0; color:#d8e8ea; }
+    main { max-width:1600px; margin:auto; padding:18px; }
+    .metrics { display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)); gap:10px; margin-bottom:14px; }
+    .metric,.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
+    .metric label { color:var(--muted); display:block; font-size:11px; text-transform:uppercase; margin-bottom:7px; }
+    .metric strong { font-size:25px; }
+    .layout { display:grid; grid-template-columns:330px 1fr; gap:14px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
+    h2 { color:var(--accent); font-size:16px; margin:0 0 12px; }
+    h3 { margin:0 0 8px; font-size:14px; }
+    label { display:block; color:var(--muted); font-size:12px; margin:8px 0 4px; }
+    input,select { width:100%; border:1px solid var(--line); border-radius:6px; padding:9px; font:inherit; background:#fff; }
+    button { border:0; border-radius:6px; padding:8px 10px; background:var(--accent); color:#fff; font-weight:bold; cursor:pointer; min-height:34px; }
+    button.secondary { background:#31575f; }
+    button.warn { background:var(--warn); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .stack { display:grid; gap:10px; }
+    .card { border:1px solid var(--line); border-radius:8px; padding:10px; background:#fbfdfd; }
+    .state { display:inline-block; border-radius:999px; padding:4px 8px; font-size:11px; background:#dbe7e9; color:#21444b; font-weight:bold; }
+    .state.ERROR { background:#f8d7da; color:var(--bad); }
+    .state.COMPLETED { background:#d6f0e6; color:var(--ok); }
+    .state.PROCESSING,.state.SENDING_RESULT { background:#fff1cf; color:var(--warn); }
+    .state.WAITING_SAMPLE,.state.SAMPLE_LOADED { background:#dcecf8; color:#1f5d83; }
+    .mini { color:var(--muted); font-size:12px; }
+    .hint { color:var(--muted); font-size:12px; line-height:1.35; margin:8px 0 0; }
+    .bar { height:8px; border-radius:999px; background:var(--soft); overflow:hidden; margin-top:8px; }
+    .bar span { display:block; height:100%; background:var(--accent); width:0%; transition:width .3s ease; }
+    .rack { display:grid; grid-template-columns:repeat(10,1fr); gap:6px; }
+    .tube { min-height:48px; border:1px solid var(--line); border-radius:6px; background:#f8fbfb; padding:5px; font-size:11px; color:var(--muted); overflow:hidden; }
+    .tube.loaded { border-color:#84b9c1; background:#e5f3f5; color:#153d45; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th,td { text-align:left; border-bottom:1px solid var(--line); padding:7px; vertical-align:top; }
+    th { color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:normal; }
+    pre { max-height:210px; overflow:auto; background:#122a30; color:#edf7f8; border-radius:6px; padding:9px; white-space:pre-wrap; word-break:break-all; }
+    .scroll { max-height:440px; overflow:auto; }
+    @media (max-width:1100px) { .metrics,.layout,.grid { grid-template-columns:1fr; } .rack { grid-template-columns:repeat(5,1fr); } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Analyzer Simulation Lab</h1><p>Manual mode, bidirectional HL7 orders, analyzer states and MLLP ACKs</p></div>
+    <button class="secondary" onclick="refresh()">Actualizar</button>
+  </header>
+  <main>
+    <section class="metrics">
+      <div class="metric"><label>Analizadores</label><strong id="mAnalyzers">0</strong></div>
+      <div class="metric"><label>Listeners HL7</label><strong id="mListeners">0</strong></div>
+      <div class="metric"><label>Pendientes</label><strong id="mPending">0</strong></div>
+      <div class="metric"><label>Mensajes</label><strong id="mMessages">0</strong></div>
+      <div class="metric"><label>Errores</label><strong id="mErrors">0</strong></div>
+    </section>
+    <section class="layout">
+      <aside class="panel">
+        <h2>Crear muestra manual</h2>
+        <p id="manualHint" class="hint">Disponible cuando el analizador esta en modo MANUAL.</p>
+        <label>Analizador</label>
+        <select id="analyzer"></select>
+        <label>Sample ID / Barcode</label>
+        <input id="sampleId" value="SMP-001">
+        <label>Paciente ID</label>
+        <input id="patientId" value="12345">
+        <label>Nombre paciente HL7</label>
+        <input id="patientName" value="MATA^GIOVANNI">
+        <label>Pruebas</label>
+        <select id="tests" multiple size="10"></select>
+        <div class="row" style="margin-top:12px"><button id="createButton" onclick="createSample()">Crear muestra</button></div>
+        <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+        <h2>Escanear barcode</h2>
+        <p class="hint">Usa esto para modo BIDIRECTIONAL: el barcode debe existir en la worklist enviada por LIS/Mirth.</p>
+        <label>Analizador</label>
+        <select id="scanAnalyzer"></select>
+        <label>Barcode</label>
+        <input id="barcodeInput" value="SMP1001">
+        <div class="row" style="margin-top:12px"><button onclick="scanSampleBarcode()">Cargar por barcode</button></div>
+        <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+        <h2>Configurar analizador</h2>
+        <label>ID</label>
+        <input id="cfgId" value="generic-hl7-02">
+        <label>Nombre</label>
+        <input id="cfgName" value="Equipo generico HL7 02">
+        <label>Vendor</label>
+        <input id="cfgVendor" value="Generic">
+        <label>Protocolo</label>
+        <select id="cfgProtocol">
+          <option value="HL7">HL7</option>
+          <option value="ASTM">ASTM</option>
+        </select>
+        <label>Puerto listener ordenes</label>
+        <input id="cfgListenPort" value="5020">
+        <label>Destino resultados host</label>
+        <input id="cfgDestinationHost" value="localhost">
+        <label>Destino resultados puerto</label>
+        <input id="cfgDestinationPort" value="2575">
+        <label>Pruebas soportadas CSV</label>
+        <input id="cfgTests" value="CBC,WBC,RBC,HGB,PLT">
+        <label>Modo</label>
+        <select id="cfgMode">
+          <option value="MANUAL">MANUAL</option>
+          <option value="BIDIRECTIONAL">BIDIRECTIONAL</option>
+        </select>
+        <div class="row" style="margin-top:12px">
+          <button onclick="createAnalyzerConfig()">Agregar</button>
+          <button class="secondary" onclick="saveAnalyzerConfig()">Guardar</button>
+        </div>
+      </aside>
+      <section class="grid">
+        <article class="panel">
+          <h2>Analizadores</h2>
+          <div id="analyzers" class="stack"></div>
+        </article>
+        <article class="panel">
+          <h2>Rack / barcode</h2>
+          <div id="rack" class="rack"></div>
+        </article>
+        <article class="panel" style="grid-column:1/-1">
+          <h2>Worklist / cola</h2>
+          <div class="scroll"><table><thead><tr><th>Muestra</th><th>Paciente</th><th>Equipo</th><th>Estado</th><th>Rack</th><th>Acciones</th></tr></thead><tbody id="orders"></tbody></table></div>
+        </article>
+        <article class="panel" style="grid-column:1/-1">
+          <h2>Mensajes</h2>
+          <div id="messages" class="stack"></div>
+        </article>
+      </section>
+    </section>
+  </main>
+  <script>
+    const el = id => document.getElementById(id);
+    const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    let analyzerList = [];
+    let orderList = [];
+    async function get(path) { const r = await fetch(path); if (!r.ok) throw Error(path); return r.json(); }
+    async function post(path, body = {}) {
+      const r = await fetch(path, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
+      if (!r.ok) throw Error((await r.json()).detail || path);
+      return r.json();
+    }
+    async function patch(path, body = {}) {
+      const r = await fetch(path, { method:"PATCH", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
+      if (!r.ok) throw Error((await r.json()).detail || path);
+      return r.json();
+    }
+    function fillTests() {
+      const selected = analyzerList.find(a => a.id === el("analyzer").value);
+      el("tests").innerHTML = (selected?.supportedTests || []).map(t => `<option selected value="${esc(t)}">${esc(t)}</option>`).join("");
+      const manual = selected?.mode === "MANUAL";
+      el("createButton").disabled = !manual;
+      el("manualHint").textContent = manual ? "Disponible: este analizador crea barcode/sampleId manual." : "Desactivado: este analizador espera orden externa desde LIS/Mirth.";
+    }
+    async function createSample() {
+      const tests = [...el("tests").selectedOptions].map(o => o.value);
+      await post("/api/manual-samples", {
+        analyzerId: el("analyzer").value,
+        sampleId: el("sampleId").value,
+        barcode: el("sampleId").value,
+        patientId: el("patientId").value,
+        patientName: el("patientName").value,
+        tests
+      });
+      el("sampleId").value = "SMP-" + String(Math.floor(Math.random() * 9999)).padStart(4, "0");
+      await refresh();
+    }
+    async function setMode(id, mode) { await patch(`/api/analyzers/${id}/mode`, { mode }); await refresh(); }
+    async function setAnalyzerState(id, state) { await patch(`/api/analyzers/${id}/state`, { state }); await refresh(); }
+    async function setScenario(id, scenario) { await patch(`/api/analyzers/${id}/scenario`, { scenario }); await refresh(); }
+    async function put(path, body = {}) {
+      const r = await fetch(path, { method:"PUT", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
+      if (!r.ok) throw Error((await r.json()).detail || path);
+      return r.json();
+    }
+    function configPayload() {
+      const protocol = el("cfgProtocol").value;
+      return {
+        id: el("cfgId").value,
+        name: el("cfgName").value,
+        vendor: el("cfgVendor").value,
+        protocol,
+        transport: protocol === "HL7" ? "MLLP" : "TCP_SIMULATED",
+        listenPort: Number(el("cfgListenPort").value || 0),
+        resultDestinationHost: el("cfgDestinationHost").value,
+        resultDestinationPort: Number(el("cfgDestinationPort").value || 0),
+        supportedTests: el("cfgTests").value.split(",").map(x => x.trim()).filter(Boolean),
+        mode: el("cfgMode").value
+      };
+    }
+    function editAnalyzer(id) {
+      const analyzer = analyzerList.find(a => a.id === id);
+      if (!analyzer) return;
+      el("cfgId").value = analyzer.id;
+      el("cfgName").value = analyzer.name;
+      el("cfgVendor").value = analyzer.vendor;
+      el("cfgProtocol").value = analyzer.protocol;
+      el("cfgListenPort").value = analyzer.listenPort || 0;
+      el("cfgDestinationHost").value = analyzer.resultDestinationHost;
+      el("cfgDestinationPort").value = analyzer.resultDestinationPort;
+      el("cfgTests").value = (analyzer.supportedTests || []).join(",");
+      el("cfgMode").value = analyzer.mode;
+    }
+    async function createAnalyzerConfig() { await post("/api/analyzers", configPayload()); await refresh(); }
+    async function saveAnalyzerConfig() { const payload = configPayload(); await put(`/api/analyzers/${payload.id}`, payload); await refresh(); }
+    async function scanSampleBarcode() {
+      await post(`/api/analyzers/${el("scanAnalyzer").value}/scan`, { barcode: el("barcodeInput").value });
+      el("barcodeInput").value = "";
+      await refresh();
+    }
+    async function loadOrder(id, barcode) { await post(`/api/orders/${id}/load`, { barcode }); await refresh(); }
+    async function processOrder(id) { await post(`/api/orders/${id}/process`, { sendResult:false }); await refresh(); }
+    async function sendOrder(id) { await post(`/api/orders/${id}/send`, {}); await refresh(); }
+    async function processAndSend(id) { await post(`/api/orders/${id}/process`, { sendResult:true }); await refresh(); }
+    function actionButtons(order) {
+      const analyzer = analyzerList.find(a => a.id === order.analyzerId);
+      const canLoad = order.status === "WAITING_SAMPLE" && analyzer?.mode === "MANUAL";
+      const canProcess = order.status === "SAMPLE_LOADED";
+      const canSend = order.status === "RESULT_READY";
+      return `<div class="row">
+        <button ${canLoad ? "" : "disabled"} onclick="loadOrder('${order.id}','${esc(order.barcode)}')">Cargar</button>
+        <button class="warn" ${canProcess ? "" : "disabled"} onclick="processOrder('${order.id}')">Procesar</button>
+        <button ${canSend ? "" : "disabled"} onclick="sendOrder('${order.id}')">Enviar</button>
+        <button ${canProcess ? "" : "disabled"} onclick="processAndSend('${order.id}')">Todo</button>
+        ${analyzer?.mode === "BIDIRECTIONAL" && order.status === "WAITING_SAMPLE" ? `<small class="mini">Escanear ${esc(order.barcode)}</small>` : ""}
+      </div>`;
+    }
+    function renderRack() {
+      const active = orderList.filter(o => !["COMPLETED","ERROR"].includes(o.status)).slice(0, 50);
+      const byPosition = Object.fromEntries(active.map(o => [o.rackPosition, o]));
+      const tubes = [];
+      for (let i = 1; i <= 50; i++) {
+        const pos = `R${String(Math.floor((i - 1) / 10) + 1).padStart(2, "0")}-P${String((i - 1) % 10 + 1).padStart(2, "0")}`;
+        const order = byPosition[pos];
+        tubes.push(`<div class="tube ${order ? "loaded" : ""}"><strong>${pos}</strong><br>${order ? `${esc(order.sampleId)}<br>${esc(order.status)}` : "Libre"}</div>`);
+      }
+      el("rack").innerHTML = tubes.join("");
+    }
+    async function refresh() {
+      const [dash, analyzers, orders, messages] = await Promise.all([
+        get("/api/dashboard"), get("/api/analyzers"), get("/api/orders"), get("/api/messages")
+      ]);
+      analyzerList = analyzers;
+      orderList = orders;
+      el("mAnalyzers").textContent = dash.analyzerCount;
+      el("mListeners").textContent = dash.activeListenerCount;
+      el("mPending").textContent = dash.pendingOrderCount;
+      el("mMessages").textContent = dash.messageCount;
+      el("mErrors").textContent = dash.errorCount;
+      const previous = el("analyzer").value;
+      const previousScan = el("scanAnalyzer").value;
+      el("analyzer").innerHTML = analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} (${esc(a.protocol)})</option>`).join("");
+      el("scanAnalyzer").innerHTML = analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} (${esc(a.mode)})</option>`).join("");
+      if (previous) el("analyzer").value = previous;
+      if (previousScan) el("scanAnalyzer").value = previousScan;
+      fillTests();
+      el("analyzers").innerHTML = analyzers.map(a => `<div class="card">
+        <div class="row"><h3>${esc(a.name)}</h3><span class="state ${esc(a.state)}">${esc(a.state)}</span></div>
+        <div class="row">
+          <select style="max-width:190px" onchange="setMode('${esc(a.id)}', this.value)">
+            <option value="MANUAL" ${a.mode === "MANUAL" ? "selected" : ""}>Manual / unidireccional</option>
+            <option value="BIDIRECTIONAL" ${a.mode === "BIDIRECTIONAL" ? "selected" : ""}>Bidireccional</option>
+          </select>
+          <span class="state">${esc(a.mode)}</span>
+          <button class="secondary" onclick="editAnalyzer('${esc(a.id)}')">Editar</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <select style="max-width:170px" onchange="setAnalyzerState('${esc(a.id)}', this.value)">
+            ${["IDLE","OFFLINE","MAINTENANCE","CALIBRATION","QC_RUNNING","REAGENT_LOW","RACK_FULL","DOOR_OPEN"].map(s => `<option value="${s}" ${a.state === s ? "selected" : ""}>${s}</option>`).join("")}
+          </select>
+          <select style="max-width:190px" onchange="setScenario('${esc(a.id)}', this.value)">
+            ${["NORMAL","FORCE_CRITICAL","SAMPLE_ERROR","NO_RESPONSE","MALFORMED_RESULT"].map(s => `<option value="${s}" ${(a.scenario || "NORMAL") === s ? "selected" : ""}>${s}</option>`).join("")}
+          </select>
+        </div>
+        <div class="mini">${esc(a.vendor)} - ${esc(a.protocol)} / ${esc(a.transport)} - listener ${a.listenerActive ? "ON" : "OFF"} ${esc(a.listenerHost || "")}</div>
+        <div class="mini">Destino resultados: ${esc(a.resultDestinationHost)}:${esc(a.resultDestinationPort)}</div>
+        <div class="mini">Muestra: ${esc(a.currentSampleId || "-")} | ACK: ${esc(a.lastAckCode || "-")} | Escenario: ${esc(a.scenario || "NORMAL")}</div>
+        <div class="bar"><span style="width:${Number(a.progress || 0)}%"></span></div>
+        <small>${esc(a.supportedTests.join(", "))}</small>
+        ${a.lastError || a.listenerError ? `<p style="color:#c92a2a">${esc(a.lastError || a.listenerError)}</p>` : ""}
+      </div>`).join("");
+      el("orders").innerHTML = orders.map(o => `<tr>
+        <td>${esc(o.sampleId)}<br><small>${esc(o.source)} / ${esc(o.barcode)}</small></td>
+        <td>${esc(o.patientId)}<br><small>${esc(o.patientName)}</small></td>
+        <td>${esc(o.analyzerId)}<br><small>${esc((o.requestedTests || []).join(", "))}</small></td>
+        <td><span class="state ${esc(o.status)}">${esc(o.status)}</span></td>
+        <td>${esc(o.rackPosition || "-")}</td>
+        <td>${actionButtons(o)}</td>
+      </tr>`).join("");
+      renderRack();
+      el("messages").innerHTML = messages.map(m => `<details class="card">
+        <summary>${esc(m.createdAt)} - ${esc(m.direction)} - ${esc(m.messageType)} - ACK ${esc(m.ackCode || "-")} - ${esc(m.destination)}</summary>
+        <pre>${esc(m.rawMessage)}</pre>
+        ${m.ackMessage ? `<pre>${esc(m.ackMessage)}</pre>` : ""}
+        ${m.error ? `<p style="color:#c92a2a">${esc(m.error)}</p>` : ""}
+      </details>`).join("");
+    }
+    el("analyzer").addEventListener("change", fillTests);
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

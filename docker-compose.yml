@@ -1,4 +1,24 @@
 services:
+  analyzer-simulator-api:
+    build:
+      context: ./services/analyzer-simulator-api
+    environment:
+      RESULT_DESTINATION_HOST: ${RESULT_DESTINATION_HOST:-host.docker.internal}
+      RESULT_DESTINATION_PORT: ${RESULT_DESTINATION_PORT:-2575}
+      ORDER_LISTENERS_ENABLED: ${ORDER_LISTENERS_ENABLED:-true}
+      SIMULATOR_DB_PATH: /app/data/simulator.db
+    ports:
+      - "${ANALYZER_SIMULATOR_PORT:-8090}:8090"
+      - "${ABBOTT_RUBY_ORDER_PORT:-5001}:5001"
+      - "${SYSMEX_XN_ORDER_PORT:-5002}:5002"
+      - "${ARCHITECT_ORDER_PORT:-5003}:5003"
+      - "${SYSMEX_UC_ASTM_ORDER_PORT:-5004}:5004"
+      - "${GENERIC_HL7_ORDER_PORT:-5010}:5010"
+      - "${GENERIC_ASTM_ORDER_PORT:-5011}:5011"
+    volumes:
+      - ./services/analyzer-simulator-api/data:/app/data
+    restart: unless-stopped
+
   fake-analyzer:
     build:
       context: ./services/fake-analyzer
