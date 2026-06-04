@@ -115,6 +115,7 @@
           <button onclick="createAnalyzerConfig()">Agregar</button>
           <button class="secondary" onclick="saveAnalyzerConfig()">Guardar</button>
         </div>
+        <p id="configStatus" class="hint"></p>
       </aside>
       <section class="grid">
         <article class="panel">
@@ -127,6 +128,7 @@
         </article>
         <article class="panel" style="grid-column:1/-1">
           <h2>Worklist / cola</h2>
+          <p id="worklistStatus" class="hint"></p>
           <div class="scroll"><table><thead><tr><th>Muestra</th><th>Paciente</th><th>Equipo</th><th>Estado</th><th>Rack</th><th>Acciones</th></tr></thead><tbody id="orders"></tbody></table></div>
         </article>
         <article class="panel" style="grid-column:1/-1">
@@ -207,27 +209,63 @@
       el("cfgDestinationPort").value = analyzer.resultDestinationPort;
       el("cfgTests").value = (analyzer.supportedTests || []).join(",");
       el("cfgMode").value = analyzer.mode;
+      el("configStatus").textContent = `Editando ${analyzer.id}. Cambia host/puerto y presiona Guardar.`;
     }
-    async function createAnalyzerConfig() { await post("/api/analyzers", configPayload()); await refresh(); }
-    async function saveAnalyzerConfig() { const payload = configPayload(); await put(`/api/analyzers/${payload.id}`, payload); await refresh(); }
+    async function createAnalyzerConfig() {
+      const payload = configPayload();
+      try {
+        if (analyzerList.some(a => a.id === payload.id)) {
+          await put(`/api/analyzers/${payload.id}`, payload);
+          el("configStatus").textContent = `Analizador ${payload.id} actualizado.`;
+        } else {
+          await post("/api/analyzers", payload);
+          el("configStatus").textContent = `Analizador ${payload.id} agregado.`;
+        }
+        await refresh();
+      } catch (error) {
+        el("configStatus").textContent = error.message;
+      }
+    }
+    async function saveAnalyzerConfig() {
+      const payload = configPayload();
+      try {
+        await put(`/api/analyzers/${payload.id}`, payload);
+        el("configStatus").textContent = `Analizador ${payload.id} actualizado.`;
+        await refresh();
+      } catch (error) {
+        el("configStatus").textContent = error.message;
+      }
+    }
     async function scanSampleBarcode() {
       await post(`/api/analyzers/${el("scanAnalyzer").value}/scan`, { barcode: el("barcodeInput").value });
       el("barcodeInput").value = "";
       await refresh();
     }
-    async function loadOrder(id, barcode) { await post(`/api/orders/${id}/load`, { barcode }); await refresh(); }
-    async function processOrder(id) { await post(`/api/orders/${id}/process`, { sendResult:false }); await refresh(); }
-    async function sendOrder(id) { await post(`/api/orders/${id}/send`, {}); await refresh(); }
-    async function processAndSend(id) { await post(`/api/orders/${id}/process`, { sendResult:true }); await refresh(); }
+    async function runWorklistAction(action) {
+      try {
+        await action();
+        el("worklistStatus").textContent = "";
+        await refresh();
+      } catch (error) {
+        el("worklistStatus").textContent = error.message;
+        await refresh();
+      }
+    }
+    async function loadOrder(id, barcode) { await runWorklistAction(() => post(`/api/orders/${id}/load`, { barcode })); }
+    async function processOrder(id) { await runWorklistAction(() => post(`/api/orders/${id}/process`, { sendResult:false })); }
+    async function sendOrder(id) { await runWorklistAction(() => post(`/api/orders/${id}/send`, {})); }
+    async function processAndSend(id) { await runWorklistAction(() => post(`/api/orders/${id}/process`, { sendResult:true })); }
     function actionButtons(order) {
       const analyzer = analyzerList.find(a => a.id === order.analyzerId);
       const canLoad = order.status === "WAITING_SAMPLE" && analyzer?.mode === "MANUAL";
       const canProcess = order.status === "SAMPLE_LOADED";
       const canSend = order.status === "RESULT_READY";
+      const canRetry = order.status === "ERROR";
       return `<div class="row">
         <button ${canLoad ? "" : "disabled"} onclick="loadOrder('${order.id}','${esc(order.barcode)}')">Cargar</button>
         <button class="warn" ${canProcess ? "" : "disabled"} onclick="processOrder('${order.id}')">Procesar</button>
         <button ${canSend ? "" : "disabled"} onclick="sendOrder('${order.id}')">Enviar</button>
+        <button class="warn" ${canRetry ? "" : "disabled"} onclick="sendOrder('${order.id}')">Reintentar</button>
         <button ${canProcess ? "" : "disabled"} onclick="processAndSend('${order.id}')">Todo</button>
         ${analyzer?.mode === "BIDIRECTIONAL" && order.status === "WAITING_SAMPLE" ? `<small class="mini">Escanear ${esc(order.barcode)}</small>` : ""}
       </div>`;
