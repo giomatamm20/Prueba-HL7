@@ -9,4 +9,5 @@ class Modules extends BaseModules
     public $enabled = true;
     public $discoverInComposer = true;
     public $aliases = [];
+    public $composerPackages = [];
 }
