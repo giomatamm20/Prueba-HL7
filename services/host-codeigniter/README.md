@@ -20,6 +20,8 @@ MLLP_HOST=0.0.0.0
 MLLP_PORT=2575
 WEB_HOST=0.0.0.0
 WEB_PORT=8088
+RUBY_ORDER_HOST=localhost
+RUBY_ORDER_PORT=5001
 ```
 
 ## Arrancar
@@ -51,6 +53,20 @@ http://localhost:8088
 - `GET /api/patients`
 - `GET /api/orders`
 - `GET /api/results?limit=100`
+- `GET /api/test-catalog`
+- `POST /api/test-catalog`
+- `GET /api/outbound-orders?limit=25`
+- `POST /api/outbound-orders`
+
+## Ordenes hacia CELL-DYN Ruby
+
+El dashboard incluye una seccion para crear una orden `ORM^O01` hacia el
+simulador CELL-DYN Ruby. El catalogo inicial se siembra en PostgreSQL con cinco
+examenes (`WBC`, `RBC`, `HGB`, `HCT`, `PLT`) y se puede ampliar desde la misma
+vista o por API sin tocar codigo.
+
+Por defecto las ordenes se envian por MLLP a `localhost:5001`, configurable con
+`RUBY_ORDER_HOST` y `RUBY_ORDER_PORT`.
 
 ## Nota
 

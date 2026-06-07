@@ -169,6 +169,89 @@ class CrmStore
         );
     }
 
+    public function testCatalog(bool $activeOnly = true): array
+    {
+        $where = $activeOnly ? 'WHERE active = TRUE' : '';
+        return $this->rows(
+            "SELECT id, code, name, analyzer_code, active, sort_order, created_at, updated_at
+             FROM test_catalog {$where}
+             ORDER BY sort_order ASC, code ASC"
+        );
+    }
+
+    public function createTestCatalogItem(array $item): array
+    {
+        $statement = $this->pdo->prepare(
+            "INSERT INTO test_catalog (code, name, analyzer_code, sort_order)
+             VALUES (:code, :name, :analyzer_code, :sort_order)
+             ON CONFLICT (code) DO UPDATE SET
+                name = EXCLUDED.name,
+                analyzer_code = EXCLUDED.analyzer_code,
+                active = TRUE,
+                sort_order = EXCLUDED.sort_order,
+                updated_at = NOW()
+             RETURNING id, code, name, analyzer_code, active, sort_order, created_at, updated_at"
+        );
+        $statement->execute([
+            'code' => strtoupper(trim($item['code'])),
+            'name' => trim($item['name']),
+            'analyzer_code' => $item['analyzer_code'] ?? 'ABBOTT_RUBY',
+            'sort_order' => (int) ($item['sort_order'] ?? 100),
+        ]);
+        return $statement->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function outboundOrders(int $limit = 25): array
+    {
+        return $this->rows(
+            "SELECT id, order_external_id, analyzer_code, patient_external_id,
+                    patient_name, sample_id, priority, requested_tests, destination_host,
+                    destination_port, raw_message, ack_code, ack_message, status,
+                    error_message, created_at
+             FROM outbound_orders
+             ORDER BY created_at DESC, id DESC LIMIT :limit",
+            ['limit' => $limit]
+        );
+    }
+
+    public function saveOutboundOrder(array $order): array
+    {
+        $statement = $this->pdo->prepare(
+            "INSERT INTO outbound_orders (
+                order_external_id, analyzer_code, patient_external_id, patient_name,
+                sample_id, priority, requested_tests, destination_host, destination_port,
+                raw_message, ack_code, ack_message, status, error_message
+            )
+            VALUES (
+                :order_external_id, :analyzer_code, :patient_external_id, :patient_name,
+                :sample_id, :priority, CAST(:requested_tests AS jsonb), :destination_host,
+                :destination_port, :raw_message, :ack_code, :ack_message, :status,
+                :error_message
+            )
+            RETURNING id, order_external_id, analyzer_code, patient_external_id,
+                patient_name, sample_id, priority, requested_tests, destination_host,
+                destination_port, raw_message, ack_code, ack_message, status,
+                error_message, created_at"
+        );
+        $statement->execute([
+            'order_external_id' => $order['orderExternalId'],
+            'analyzer_code' => $order['analyzerCode'],
+            'patient_external_id' => $order['patientExternalId'],
+            'patient_name' => $order['patientName'] ?? null,
+            'sample_id' => $order['sampleId'],
+            'priority' => $order['priority'] ?? 'ROUTINE',
+            'requested_tests' => json_encode($order['requestedTests'], JSON_THROW_ON_ERROR),
+            'destination_host' => $order['destinationHost'],
+            'destination_port' => $order['destinationPort'],
+            'raw_message' => $order['rawMessage'],
+            'ack_code' => $order['ackCode'] ?? null,
+            'ack_message' => $order['ackMessage'] ?? null,
+            'status' => $order['status'],
+            'error_message' => $order['errorMessage'] ?? null,
+        ]);
+        return $statement->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
+
     private function insertRawMessage(string $sourceIp, array $parsed, string $rawMessage, string $ack): int
     {
         $statement = $this->pdo->prepare(

@@ -49,6 +49,45 @@ CREATE TABLE IF NOT EXISTS lab_results (
     observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS test_catalog (
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(100) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    analyzer_code VARCHAR(100) NOT NULL DEFAULT 'ABBOTT_RUBY',
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order INTEGER NOT NULL DEFAULT 100,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO test_catalog (code, name, analyzer_code, sort_order) VALUES
+    ('WBC', 'Leucocitos', 'ABBOTT_RUBY', 10),
+    ('RBC', 'Eritrocitos', 'ABBOTT_RUBY', 20),
+    ('HGB', 'Hemoglobina', 'ABBOTT_RUBY', 30),
+    ('HCT', 'Hematocrito', 'ABBOTT_RUBY', 40),
+    ('PLT', 'Plaquetas', 'ABBOTT_RUBY', 50)
+ON CONFLICT (code) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS outbound_orders (
+    id BIGSERIAL PRIMARY KEY,
+    order_external_id VARCHAR(100) NOT NULL,
+    analyzer_code VARCHAR(100) NOT NULL,
+    patient_external_id VARCHAR(100) NOT NULL,
+    patient_name VARCHAR(255),
+    sample_id VARCHAR(100) NOT NULL,
+    priority VARCHAR(30) NOT NULL DEFAULT 'ROUTINE',
+    requested_tests JSONB NOT NULL,
+    destination_host VARCHAR(255) NOT NULL,
+    destination_port INTEGER NOT NULL,
+    raw_message TEXT NOT NULL,
+    ack_code VARCHAR(5),
+    ack_message TEXT,
+    status VARCHAR(30) NOT NULL,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_raw_hl7_received_at ON raw_hl7_messages (received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_lab_results_observed_at ON lab_results (observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_lab_orders_updated_at ON lab_orders (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_outbound_orders_created_at ON outbound_orders (created_at DESC);
