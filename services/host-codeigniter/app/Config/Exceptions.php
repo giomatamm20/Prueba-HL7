@@ -12,7 +12,7 @@ class Exceptions extends BaseConfig
 {
     public bool $log = true;
     public array $ignoreCodes = [404];
-    public string $errorViewPath = APPPATH . 'Views/errors';
+    public string $errorViewPath = ROOTPATH . 'vendor/codeigniter4/framework/app/Views/errors';
     public array $sensitiveDataInTrace = [];
     public bool $logDeprecations = true;
     public string $deprecationLogLevel = LogLevel::WARNING;
