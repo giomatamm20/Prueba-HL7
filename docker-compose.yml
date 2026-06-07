@@ -34,3 +34,19 @@ services:
       - ./samples/hl7:/app/samples:ro
     command: ["python", "-m", "app.main", "auto"]
     restart: unless-stopped
+
+  host-codeigniter:
+    build:
+      context: .
+      dockerfile: ./services/host-codeigniter/Dockerfile
+    environment:
+      DATABASE_URL: ${HOST_CODEIGNITER_DATABASE_URL:-postgresql://hl7host:hl7password@127.0.0.1:5432/hl7crm}
+      MLLP_HOST: ${HOST_CODEIGNITER_MLLP_HOST:-0.0.0.0}
+      MLLP_PORT: ${HOST_CODEIGNITER_MLLP_PORT:-2575}
+      WEB_HOST: ${HOST_CODEIGNITER_WEB_HOST:-0.0.0.0}
+      WEB_PORT: ${HOST_CODEIGNITER_WEB_PORT:-8088}
+      RUBY_ORDER_HOST: ${RUBY_ORDER_HOST:-127.0.0.1}
+      RUBY_ORDER_PORT: ${RUBY_ORDER_PORT:-5001}
+      CI_ENVIRONMENT: ${CI_ENVIRONMENT:-development}
+    network_mode: host
+    restart: unless-stopped
