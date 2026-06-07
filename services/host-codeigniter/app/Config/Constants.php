@@ -1,7 +1,7 @@
 <?php
 
 defined('APP_NAMESPACE') || define('APP_NAMESPACE', 'App');
-defined('ENVIRONMENT') || define('ENVIRONMENT', env('CI_ENVIRONMENT', 'production'));
+defined('ENVIRONMENT') || define('ENVIRONMENT', getenv('CI_ENVIRONMENT') ?: 'production');
 defined('COMPOSER_PATH') || define('COMPOSER_PATH', ROOTPATH . 'vendor/autoload.php');
 defined('SECOND') || define('SECOND', 1);
 defined('MINUTE') || define('MINUTE', 60);
