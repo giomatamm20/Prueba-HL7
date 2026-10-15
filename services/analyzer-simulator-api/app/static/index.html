@@ -3,214 +3,804 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Analyzer Simulation Lab</title>
+  <title>Simulador de Analizadores HL7</title>
+  <script src="/static/hl7_dictionary.js"></script>
   <style>
-    :root { --bg:#eef4f5; --ink:#15272b; --muted:#5e7176; --panel:#fff; --line:#cfdcde; --accent:#0f7280; --ok:#087f5b; --warn:#b76e00; --bad:#c92a2a; --soft:#e8f1f2; }
+    :root { --bg:#f3f7f8; --ink:#17252b; --muted:#64747c; --panel:#fff; --line:#dbe5e8; --accent:#176b7a; --accent-2:#214f5c; --ok:#217a53; --warn:#a76505; --bad:#bc3d3d; --soft:#e8f2f4; }
     * { box-sizing:border-box; }
-    body { margin:0; color:var(--ink); background:var(--bg); font:14px Arial,sans-serif; }
-    header { padding:18px 24px; background:#103f49; color:#fff; display:flex; justify-content:space-between; gap:18px; align-items:center; }
-    h1 { margin:0; font-size:22px; }
-    header p { margin:4px 0 0; color:#d8e8ea; }
-    main { max-width:1600px; margin:auto; padding:18px; }
+    body { margin:0; color:var(--ink); background:var(--bg); font:14px "Segoe UI",Tahoma,sans-serif; }
+    header { padding:20px 24px; background:linear-gradient(120deg,#12313a,#176b7a); color:#fff; display:flex; justify-content:space-between; gap:18px; align-items:center; }
+    h1,h2,h3 { margin:0; }
+    h1 { font-size:24px; letter-spacing:.02em; }
+    header p { margin:4px 0 0; color:#d2e8eb; max-width:780px; }
+    main { max-width:1680px; margin:auto; padding:18px; }
     .metrics { display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)); gap:10px; margin-bottom:14px; }
-    .metric,.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
-    .metric label { color:var(--muted); display:block; font-size:11px; text-transform:uppercase; margin-bottom:7px; }
+    .metric,.panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; box-shadow:0 8px 22px rgba(20,47,55,.05); }
+    .metric label { color:var(--muted); display:block; font-size:11px; text-transform:uppercase; margin-bottom:7px; letter-spacing:.08em; }
     .metric strong { font-size:25px; }
-    .layout { display:grid; grid-template-columns:330px 1fr; gap:14px; }
-    .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
-    h2 { color:var(--accent); font-size:16px; margin:0 0 12px; }
-    h3 { margin:0 0 8px; font-size:14px; }
+    .layout { display:grid; grid-template-columns:360px 1fr; gap:14px; }
+    .grid { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
+    h2 { color:var(--accent); font-size:16px; margin-bottom:12px; }
+    h3 { font-size:14px; }
     label { display:block; color:var(--muted); font-size:12px; margin:8px 0 4px; }
-    input,select { width:100%; border:1px solid var(--line); border-radius:6px; padding:9px; font:inherit; background:#fff; }
-    button { border:0; border-radius:6px; padding:8px 10px; background:var(--accent); color:#fff; font-weight:bold; cursor:pointer; min-height:34px; }
-    button.secondary { background:#31575f; }
+    input,select,textarea { width:100%; border:1px solid var(--line); border-radius:8px; padding:9px; font:inherit; background:#fff; }
+    textarea { min-height:88px; resize:vertical; }
+    button { border:0; border-radius:8px; padding:8px 10px; background:var(--accent); color:#fff; font-weight:700; cursor:pointer; min-height:34px; }
+    button.secondary { background:var(--accent-2); }
     button.warn { background:var(--warn); }
+    button.ghost { background:#e9e0d4; color:var(--ink); }
     button:disabled { opacity:.45; cursor:not-allowed; }
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .stack { display:grid; gap:10px; }
-    .card { border:1px solid var(--line); border-radius:8px; padding:10px; background:#fbfdfd; }
-    .state { display:inline-block; border-radius:999px; padding:4px 8px; font-size:11px; background:#dbe7e9; color:#21444b; font-weight:bold; }
+    .card { border:1px solid var(--line); border-radius:10px; padding:12px; background:#fbfcfc; }
+    .state { display:inline-block; border-radius:999px; padding:4px 8px; font-size:11px; background:#e5eff1; color:#28525c; font-weight:700; }
     .state.ERROR { background:#f8d7da; color:var(--bad); }
     .state.COMPLETED { background:#d6f0e6; color:var(--ok); }
-    .state.PROCESSING,.state.SENDING_RESULT { background:#fff1cf; color:var(--warn); }
+    .state.PROCESSING,.state.SENDING_RESULT,.state.RESULT_READY { background:#fff1cf; color:var(--warn); }
     .state.WAITING_SAMPLE,.state.SAMPLE_LOADED { background:#dcecf8; color:#1f5d83; }
+    .state.CANCELLED { background:#ebe7f6; color:#5d478a; }
+    .state.ORDER_RECEIVED { background:#dcecf8; color:#1f5d83; }
+    .state.GENERATING_IMAGE,.state.IMAGE_READY,.state.NOTIFYING_MIRTH { background:#fff1cf; color:var(--warn); }
+    .state.NOTIFICATION_ERROR,.state.IMAGE_GENERATION_ERROR { background:#f8d7da; color:var(--bad); }
     .mini { color:var(--muted); font-size:12px; }
     .hint { color:var(--muted); font-size:12px; line-height:1.35; margin:8px 0 0; }
     .bar { height:8px; border-radius:999px; background:var(--soft); overflow:hidden; margin-top:8px; }
-    .bar span { display:block; height:100%; background:var(--accent); width:0%; transition:width .3s ease; }
-    .rack { display:grid; grid-template-columns:repeat(10,1fr); gap:6px; }
-    .tube { min-height:48px; border:1px solid var(--line); border-radius:6px; background:#f8fbfb; padding:5px; font-size:11px; color:var(--muted); overflow:hidden; }
-    .tube.loaded { border-color:#84b9c1; background:#e5f3f5; color:#153d45; }
+    .bar span { display:block; height:100%; background:linear-gradient(90deg,var(--accent),#49a0ab); width:0%; transition:width .3s ease; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th,td { text-align:left; border-bottom:1px solid var(--line); padding:7px; vertical-align:top; }
     th { color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:normal; }
-    pre { max-height:210px; overflow:auto; background:#122a30; color:#edf7f8; border-radius:6px; padding:9px; white-space:pre-wrap; word-break:break-all; }
-    .scroll { max-height:440px; overflow:auto; }
-    @media (max-width:1100px) { .metrics,.layout,.grid { grid-template-columns:1fr; } .rack { grid-template-columns:repeat(5,1fr); } }
+    pre { max-height:220px; overflow:auto; background:#142129; color:#edf7f8; border-radius:8px; padding:9px; white-space:pre-wrap; word-break:break-all; }
+    .scroll { max-height:520px; overflow:auto; }
+    .message-scroll { max-height:540px; overflow:auto; padding-right:6px; }
+    .cols-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .tools { display:grid; gap:14px; }
+    .banner { background:#edf7f5; color:#25634d; border:1px solid #bfe1d4; border-radius:10px; padding:12px; margin-bottom:14px; }
+    .section-label { color:var(--accent); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin:0 0 5px; }
+    .config-steps { display:flex; gap:7px; margin:0 0 12px; padding:0; list-style:none; counter-reset:step; }
+    .config-steps li { flex:1; min-width:0; padding:8px; background:#f4f8f9; border:1px solid var(--line); border-radius:8px; color:var(--muted); font-size:10px; line-height:1.35; }
+    .config-steps li::before { content:counter(step); counter-increment:step; display:inline-grid; place-items:center; width:18px; height:18px; margin-right:5px; border-radius:99px; background:var(--accent); color:#fff; font-weight:800; }
+    details.advanced { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); } details.advanced summary { cursor:pointer; color:var(--accent); font-weight:800; } .preset { padding:10px; margin-bottom:12px; border-radius:9px; border:1px solid #b9d8de; background:#edf7f8; color:#255c66; font-size:12px; }
+    .mapping-intro{margin:10px 0;padding:10px;border-left:3px solid var(--accent);background:#f4f9fa;color:#41616a;font-size:12px;line-height:1.45}.mapping-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.mapping-field{padding:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfc}.mapping-field label{margin:0 0 5px;color:var(--ink);font-weight:700}.mapping-field small{display:block;margin-top:4px;color:var(--muted);font-size:10px;line-height:1.35}.hl7-path{font-family:Consolas,"Courier New",monospace;color:#155b68}.mapping-example{margin-top:10px;padding:10px;border-radius:8px;background:#142129;color:#d9edf1;font:11px/1.5 Consolas,"Courier New",monospace;white-space:pre-wrap}
+    .custom-map-list{display:grid;gap:8px;margin-top:10px}.custom-map-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1.3fr) auto;gap:8px;align-items:end;padding:9px;border:1px dashed #b9cdd2;border-radius:8px;background:#fbfdfd}.custom-map-row label{margin:0 0 4px}.custom-map-row button{min-height:36px}.custom-map-empty{padding:10px;border-radius:8px;background:#f6f9fa;color:var(--muted);font-size:12px}
+    .app-shell { min-height:100vh; display:grid; grid-template-columns:244px minmax(0,1fr); }
+    .sidebar { padding:22px 14px; color:#d9e7ea; background:linear-gradient(180deg,#173b45,#102a31); display:flex; flex-direction:column; gap:24px; }
+    .brand { padding:0 10px 18px; border-bottom:1px solid rgba(255,255,255,.13); }.brand strong{display:block;color:#fff;font-size:18px}.brand span{display:block;margin-top:5px;color:#b4cdd2;font-size:12px;line-height:1.4}
+    .nav-title{padding:0 10px 7px;color:#87aab3;font-size:10px;text-transform:uppercase;letter-spacing:.12em}.nav{display:grid;gap:4px}.nav button{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border:0;border-radius:8px;background:transparent;color:#d7e5e8;text-align:left;box-shadow:none}.nav button:hover,.nav button.active{background:#fff;color:#173b45}.nav i{width:17px;font-style:normal;text-align:center}.sidebar-status{margin-top:auto;padding:12px;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.06);font-size:11px;line-height:1.45;color:#bcd1d5}.sidebar-status b{color:#fff}.online-dot{display:inline-block;width:8px;height:8px;margin-right:6px;background:#61d29a;border-radius:99px}
+    .main-content header{background:#fff;color:var(--ink);border-bottom:1px solid var(--line);box-shadow:none}.main-content header p{color:var(--muted)}.main-content header button{background:var(--accent-2)}.main-content main{max-width:none;margin:0;padding:22px}
+    .page-title{display:none;margin-bottom:16px}.page-title h2{color:var(--ink);font-size:22px;margin:0 0 5px}.page-title p{margin:0;color:var(--muted)}
+    .page-item{display:none}.page-item.dashboard{display:block}.page-item.dashboard.metrics{display:grid}.layout{display:none}.layout.dashboard{display:grid}.layout .tools,.layout .grid{display:contents}.layout .panel{display:none}.layout .panel.dashboard{display:block;grid-column:1 / -1;width:100%}.layout .panel.dashboard .stack{max-height:none;overflow:visible}
+    #analyzers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:stretch;width:100%}#analyzers>.card{min-width:0;height:100%;margin:0}
+    body[data-page="operate"] .page-item.operate,body[data-page="configure"] .page-item.configure,body[data-page="analyzers"] .page-item.analyzers,body[data-page="worklist"] .page-item.worklist,body[data-page="messages"] .page-item.messages{display:block}body[data-page="operate"] .layout,body[data-page="configure"] .layout,body[data-page="analyzers"] .layout,body[data-page="worklist"] .layout,body[data-page="messages"] .layout{display:grid}body[data-page="operate"] .layout{grid-template-columns:minmax(360px,650px) minmax(340px,1fr)}body[data-page="configure"] .layout{grid-template-columns:minmax(640px,900px)}body[data-page="analyzers"] .layout,body[data-page="worklist"] .layout,body[data-page="messages"] .layout{grid-template-columns:minmax(0,1fr)}body:not([data-page="dashboard"]) .page-title{display:block}body:not([data-page="dashboard"]) .layout .panel{display:none}body[data-page="operate"] .layout .panel.operate,body[data-page="configure"] .layout .panel.configure,body[data-page="analyzers"] .layout .panel.analyzers,body[data-page="worklist"] .layout .panel.worklist,body[data-page="messages"] .layout .panel.messages{display:block;grid-column:auto}.operation-help{display:none}body[data-page="operate"] .operation-help{display:block}
+    body[data-page="operate"] .layout{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}body[data-page="configure"] .layout,body[data-page="analyzers"] .layout,body[data-page="worklist"] .layout,body[data-page="messages"] .layout{grid-template-columns:minmax(0,1fr);width:100%}body[data-page="configure"] .layout .panel.configure,body[data-page="analyzers"] .layout .panel.analyzers,body[data-page="worklist"] .layout .panel.worklist,body[data-page="messages"] .layout .panel.messages{grid-column:1 / -1;width:100%}
+    body[data-page="protocol"] .layout{display:grid;grid-template-columns:minmax(0,1fr);width:100%}body[data-page="protocol"] .layout .panel{display:none}body[data-page="protocol"] .layout .panel.protocol{display:block;grid-column:1 / -1;width:100%}
+    body[data-page="pacs"] .layout{display:grid;grid-template-columns:minmax(0,1fr);width:100%}body[data-page="pacs"] .layout .panel{display:none}body[data-page="pacs"] .layout .panel.pacs{display:block;grid-column:1 / -1;width:100%}
+    .pacs-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.pacs-study{display:grid;gap:8px}.pacs-study .study-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.pacs-study code{font-family:Consolas,monospace;font-size:12px}.pacs-empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:10px}
+    @media (max-width:1250px){#analyzers,body[data-page="analyzers"] #analyzers{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:700px){.mapping-grid{grid-template-columns:1fr}}
+    @media (max-width:900px){.app-shell{grid-template-columns:1fr}.sidebar{display:none}.layout,body[data-page="operate"] .layout{grid-template-columns:1fr}.layout .panel.dashboard:last-child{grid-column:auto}#analyzers,body[data-page="analyzers"] #analyzers,.pacs-cards{grid-template-columns:1fr}}
+    @media (max-width:1180px) { .metrics,.layout,.cols-2 { grid-template-columns:1fr; } }
+    .seg-label { display: flex; align-items: center; gap: 8px; }
+    .seg-controls { display: flex; flex-direction: column; gap: 2px; }
+    .seg-controls button { padding: 0 4px; font-size: 10px; background: #e9e0d4; color: var(--ink); border: 1px solid #d4c5b3; border-radius: 4px; cursor: pointer; min-height: auto; }
+    .seg-controls button:hover { background: #d4c5b3; }
   </style>
 </head>
-<body>
+<body data-page="dashboard">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><strong>Analyzer Simulator</strong><span>Simula el comportamiento de un equipo de laboratorio.</span></div>
+      <div><div class="nav-title">Operación</div><nav class="nav">
+        <button class="active" data-page-link="dashboard" onclick="showPage('dashboard',this)"><i>▦</i>Panel general</button>
+        <button data-page-link="operate" onclick="showPage('operate',this)"><i>◉</i>Operar muestras</button>
+        <button data-page-link="pacs" onclick="showPage('pacs',this)"><i>▣</i>PACS radiologia</button>
+        <button data-page-link="worklist" onclick="showPage('worklist',this)"><i>☷</i>Worklist</button>
+        <button data-page-link="messages" onclick="showPage('messages',this)"><i>⌁</i>Mensajes</button>
+      </nav></div>
+      <div><div class="nav-title">Configuración</div><nav class="nav">
+        <button data-page-link="analyzers" onclick="showPage('analyzers',this)"><i>◫</i>Analizadores</button>
+        <button data-page-link="configure" onclick="showPage('configure',this)"><i>⚙</i>Configurar equipo</button>
+        <button data-page-link="protocol" onclick="showPage('protocol',this)"><i>⌘</i>Diseñador HL7</button>
+      </nav></div>
+      <div class="sidebar-status"><b><span class="online-dot"></span>Simulador activo</b><br>Recibe órdenes y devuelve resultados como una máquina real.</div>
+    </aside>
+    <div class="main-content">
   <header>
-    <div><h1>Analyzer Simulation Lab</h1><p>Manual mode, bidirectional HL7 orders, analyzer states and MLLP ACKs</p></div>
+    <div>
+      <h1>Simulador de Analizadores HL7</h1>
+      <p>Laboratorio controlado para pruebas HIS - Mirth - analizadores. Recibe ordenes HL7/ASTM, conserva trazabilidad y genera eventos salientes de estado, nuevas muestras, cancelaciones e informes.</p>
+    </div>
     <button class="secondary" onclick="refresh()">Actualizar</button>
   </header>
   <main>
-    <section class="metrics">
+    <div class="page-title"><h2 id="pageTitle"></h2><p id="pageDescription"></p></div>
+    <div class="banner page-item dashboard"><strong>Alcance del simulador:</strong> representa un analizador. Recibe órdenes desde LIS/Mirth y devuelve resultados o eventos; no intenta simular todo el entorno clínico.</div>
+    <section class="metrics page-item dashboard">
       <div class="metric"><label>Analizadores</label><strong id="mAnalyzers">0</strong></div>
       <div class="metric"><label>Listeners HL7</label><strong id="mListeners">0</strong></div>
       <div class="metric"><label>Pendientes</label><strong id="mPending">0</strong></div>
       <div class="metric"><label>Mensajes</label><strong id="mMessages">0</strong></div>
       <div class="metric"><label>Errores</label><strong id="mErrors">0</strong></div>
     </section>
-    <section class="layout">
-      <aside class="panel">
-        <h2>Crear muestra manual</h2>
-        <p id="manualHint" class="hint">Disponible cuando el analizador esta en modo MANUAL.</p>
-        <label>Analizador</label>
-        <select id="analyzer"></select>
-        <label>Sample ID / Barcode</label>
-        <input id="sampleId" value="SMP-001">
-        <label>Paciente ID</label>
-        <input id="patientId" value="12345">
-        <label>Nombre paciente HL7</label>
-        <input id="patientName" value="MATA^GIOVANNI">
-        <label>Pruebas</label>
-        <select id="tests" multiple size="10"></select>
-        <div class="row" style="margin-top:12px"><button id="createButton" onclick="createSample()">Crear muestra</button></div>
-        <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
-        <h2>Escanear barcode</h2>
-        <p class="hint">Usa esto para modo BIDIRECTIONAL: el barcode debe existir en la worklist enviada por LIS/Mirth.</p>
-        <label>Analizador</label>
-        <select id="scanAnalyzer"></select>
-        <label>Barcode</label>
-        <input id="barcodeInput" value="SMP1001">
-        <div class="row" style="margin-top:12px"><button onclick="scanSampleBarcode()">Cargar por barcode</button></div>
-        <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
-        <h2>Configurar analizador</h2>
-        <label>ID</label>
-        <input id="cfgId" value="generic-hl7-02">
-        <label>Nombre</label>
-        <input id="cfgName" value="Equipo generico HL7 02">
-        <label>Vendor</label>
-        <input id="cfgVendor" value="Generic">
-        <label>Protocolo</label>
-        <select id="cfgProtocol">
-          <option value="HL7">HL7</option>
-          <option value="ASTM">ASTM</option>
-        </select>
-        <label>Puerto listener ordenes</label>
-        <input id="cfgListenPort" value="5020">
-        <label>Destino resultados host</label>
-        <input id="cfgDestinationHost" value="localhost">
-        <label>Destino resultados puerto</label>
-        <input id="cfgDestinationPort" value="2575">
-        <label>Pruebas soportadas CSV</label>
-        <input id="cfgTests" value="CBC,WBC,RBC,HGB,PLT">
-        <label>Modo</label>
-        <select id="cfgMode">
-          <option value="MANUAL">MANUAL</option>
-          <option value="BIDIRECTIONAL">BIDIRECTIONAL</option>
-        </select>
-        <div class="row" style="margin-top:12px">
-          <button onclick="createAnalyzerConfig()">Agregar</button>
-          <button class="secondary" onclick="saveAnalyzerConfig()">Guardar</button>
-        </div>
-        <p id="configStatus" class="hint"></p>
+    <section class="layout dashboard">
+      <aside class="tools">
+        <article class="panel operate">
+          <h2>Orden manual</h2>
+          <p class="hint">Util para crear una orden simulada sin depender de Mirth y probar los eventos salientes del analizador seleccionado.</p>
+          <label>Analizador</label>
+          <select id="analyzer"></select>
+          <div class="cols-2">
+            <div><label>Order ID</label><input id="orderId" value="ORD-001"></div>
+            <div><label>Sample ID</label><input id="sampleId" value="SMP-001"></div>
+          </div>
+          <div class="cols-2">
+            <div><label>Paciente ID</label><input id="patientId" value="12345"></div>
+            <div><label>Nombre HL7</label><input id="patientName" value="PACIENTE^DEMO"></div>
+          </div>
+          <div class="cols-2">
+            <div><label>Tipo visita PV1.2</label><input id="visitType" value="O"></div>
+            <div><label>Visita / episodio</label><input id="visitNumber" value=""></div>
+          </div>
+          <div class="cols-2">
+            <div><label>Procedimiento</label><input id="procedureCode" value="P028"></div>
+            <div><label>Descripcion</label><input id="procedureName" value="Biopsia excisional"></div>
+          </div>
+          <div class="cols-2">
+            <div><label>Muestra</label><input id="sampleName" value="Biopsia de piel"></div>
+            <div><label>Prioridad</label><input id="priority" value="ROUTINE"></div>
+          </div>
+          <div class="cols-2">
+            <div><label>Topografia</label><input id="topographyCode" value="C44.9"></div>
+            <div><label>Nombre topografia</label><input id="topographyName" value="Piel, SAI"></div>
+          </div>
+          <label>Informacion clinica</label>
+          <textarea id="clinicalInfo">Lesion pigmentada de crecimiento reciente.</textarea>
+          <label>Observaciones</label>
+          <textarea id="observations">Frasco 1. Fijado en formalina.</textarea>
+          <div class="row" style="margin-top:12px">
+            <button onclick="createSample()">Crear orden manual</button>
+          </div>
+          <p id="manualStatus" class="hint"></p>
+        </article>
+
+        <article class="panel operate operation-help">
+          <h2>Escanear muestra</h2>
+          <p class="hint">En modo bidireccional, el barcode debe existir en la worklist recibida desde Mirth.</p>
+          <label>Analizador</label>
+          <select id="scanAnalyzer"></select>
+          <label>Barcode</label>
+          <input id="barcodeInput" value="SMP-001">
+          <div class="row" style="margin-top:12px">
+            <button class="secondary" onclick="scanSampleBarcode()">Cargar por barcode</button>
+          </div>
+          <p id="scanStatus" class="hint"></p>
+        </article>
+
+        <article class="panel configure">
+          <p class="section-label">Asistente de configuración</p>
+          <h2>Agregar o editar analizador</h2>
+          <p class="hint">Configura primero la identidad y la conexión. Las reglas específicas de HL7 quedan al final.</p>
+          <ol class="config-steps"><li>Identifica el equipo</li><li>Define conexión</li><li>Opcional: reglas HL7</li></ol>
+          <div class="preset"><strong>Para empezar:</strong> elige <em>HL7 + Manual</em> si quieres probar sin Mirth; usa <em>Bidireccional</em> cuando el LIS enviará las órdenes.</div>
+          <label>Editar un analizador guardado</label>
+          <div class="row"><select id="cfgExistingAnalyzer" style="flex:1" onchange="loadSelectedAnalyzer()"><option value="">Nuevo analizador…</option></select><button class="ghost" type="button" onclick="newAnalyzerForm()">Nuevo</button></div>
+          <label>Iniciar desde una plantilla</label>
+          <div class="row"><select id="cfgTemplate" style="flex:1"><option value="GENERIC_HL7">Equipo HL7 genérico</option><option value="GENERIC_ASTM">Equipo ASTM genérico</option><option value="ANAPATH">AnaPath / VitroLink</option></select><button class="ghost" type="button" onclick="applyTemplate()">Aplicar</button></div>
+          <label>Identificador técnico <small>(único, sin espacios)</small></label>
+          <input id="cfgId" value="anapath-lis-01">
+          <div class="cols-2">
+            <div><label>Nombre visible</label><input id="cfgName" value="AnaPath LIS"></div>
+            <div><label>Fabricante / proveedor</label><input id="cfgVendor" value="Vitro"></div>
+          </div>
+          <div class="cols-2">
+            <div><label>Perfil</label><input id="cfgProfile" value="ANAPATH"><p class="hint">Usa GENERIC si no existe un perfil del proveedor.</p></div>
+            <div><label>Protocolo</label><select id="cfgProtocol"><option value="HL7">HL7 (recomendado)</option><option value="ASTM">ASTM</option></select></div>
+          </div>
+          <div class="cols-2">
+            <div><label>Puerto para recibir órdenes</label><input id="cfgListenPort" type="number" min="0" max="65535" list="allowedListenPorts" value="9500"><datalist id="allowedListenPorts"></datalist><p class="hint" id="portPoolHint">Mirth/LIS se conectará aquí. 0 deshabilita el listener.</p></div>
+            <div><label>Modo</label><select id="cfgMode"><option value="MANUAL">Manual: crear órdenes aquí</option><option value="BIDIRECTIONAL">Bidireccional: recibir desde LIS/Mirth</option></select></div>
+          </div>
+          <div class="cols-2">
+            <div><label>Host que recibirá resultados</label><input id="cfgDestinationHost" value="localhost"></div>
+            <div><label>Puerto de resultados</label><input id="cfgDestinationPort" type="number" value="9004"></div>
+          </div>
+          <label>Pruebas admitidas <small>(códigos separados por coma; vacío = sin restricción)</small></label>
+          <input id="cfgTests" value="">
+
+          <div class="row" style="margin-top:12px">
+            <button onclick="createAnalyzerConfig()">Guardar</button>
+          </div>
+          <p id="configStatus" class="hint"></p>
+        </article>
+        <style>
+          .hl7-canvas { font-family: monospace; background:#1e1e1e; color:#ccc; padding:15px; border-radius:8px; line-height:2.6; overflow-x:auto; margin-top:10px; cursor:default; user-select:none; }
+          .hl7-segment { display:block; white-space:nowrap; border-bottom:1px solid #333; padding-bottom:8px; margin-bottom:8px;}
+          .hl7-field { padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; transition: all 0.2s; position:relative; display:inline-block; min-width: 25px; text-align: center; background:#2a2a2a;}
+          .hl7-field:hover { background: #444; border-color: #666; }
+          .hl7-pipe { color: #666; padding:0 4px;}
+          .hl7-badge { position:absolute; top:-24px; left:50%; transform:translateX(-50%); font-size:10px; background:#4CAF50; color:#fff; padding:3px 6px; border-radius:4px; font-weight:bold; white-space:nowrap; z-index:10; opacity:0.95; box-shadow:0 2px 4px rgba(0,0,0,0.3); pointer-events:none;}
+          .hl7-badge.outbound { background: #9C27B0; }
+          .hl7-badge.inbound-type { background: #E91E63; }
+          .hl7-popup { position:absolute; background:#fff; border:1px solid #ddd; box-shadow:0 4px 12px rgba(0,0,0,0.15); padding:10px; border-radius:8px; z-index:100; font-family:sans-serif; width:220px; }
+          .hl7-popup select { width:100%; margin:8px 0; padding:6px; border:1px solid #ccc; border-radius:4px; }
+          .hl7-popup .row-btns { display:flex; gap:5px; margin-top:5px; }
+          .hl7-popup button { flex:1; padding:6px; font-size:12px; }
+          .canvas-toolbar { display:flex; gap:10px; margin-bottom:10px; align-items:center; }
+          .canvas-toolbar button { padding: 4px 10px; font-size:13px; }
+          .legacy-mapping { display:none; }
+        </style>
+        <article class="panel protocol">
+          <p class="section-label">Diseñador de protocolo</p><h2>Lienzo HL7 Interactivo</h2>
+          <p class="hint">Haz clic en los espacios del esqueleto HL7 para mapearlos. La vista previa se actualizará al instante.</p>
+          <div class="cols-2"><div><label>Analizador</label><select id="profileAnalyzer" onchange="onProtocolAnalyzerChanged()"></select></div><div><label>Nombre del perfil</label><input id="profileName" value="Perfil ORU estándar"></div></div>
+          
+          <div class="legacy-mapping" id="legacyMapping">
+             <input id="profileMessageType" value="ORU^R01">
+             <input id="profileVersion" value="2.5.1">
+             <input id="profileInboundType" value="OML^O21">
+             <input id="profilePatientId" value="PID-3">
+             <input id="profilePatientName" value="PID-5">
+             <input id="profileOrderId" value="ORC-2,OBR-18">
+             <input id="profileSampleId" value="SPM-2,OBR-3">
+             <input id="profileTestCode" value="OBR-4.1">
+             <input id="profileTestName" value="OBR-4.2">
+             <input id="profileResultValue" value="OBX-5">
+             <input id="profileResultUnit" value="OBX-6">
+             <input id="profileResultCode" value="OBX-3.1">
+             <input id="profileResultDocument" value="">
+             <input id="profileResultObxType" value="NM">
+             <input id="profileZSegment" value="">
+             <input id="profileFixedMapping" value="{}">
+          </div>
+
+          <div class="canvas-toolbar">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer; background:#217a53; color:#fff; padding:4px 10px; border-radius:12px; font-size:11px; font-weight:bold;">
+                  <input type="checkbox" id="profileStrictValidation" checked> Estricta: rechazar incumplimientos. Desmarcada: advertencias.
+              </label>
+              <button class="ghost" type="button" onclick="loadCanvasTemplate('OML')">📄 Plantilla OML (Recibir)</button>
+              <button class="ghost" type="button" onclick="loadCanvasTemplate('ORU_NUMERIC')">📈 Plantilla ORU (Números)</button>
+              <button class="ghost" type="button" onclick="loadCanvasTemplate('ORU_PDF')">📑 Plantilla ORU (PDF)</button>
+              <button class="ghost" type="button" onclick="addCanvasSegment()">+ Añadir Segmento Libre</button>
+              <div style="margin-left:auto; display:flex; gap:10px; align-items:center;">
+                  <span id="badgeInbound" style="display:none; font-size:11px; background:#217a53; color:#fff; padding:3px 8px; border-radius:12px; font-weight:600;"><i class="fas fa-check-circle"></i> Inbound Guardado</span>
+                  <span id="badgeOutbound" style="display:none; font-size:11px; background:#a76505; color:#fff; padding:3px 8px; border-radius:12px; font-weight:600;"><i class="fas fa-check-circle"></i> Outbound Guardado</span>
+                  <button type="button" style="background:#176b7a;" onclick="openValidatorModal()">✨ Generar Contrato Semántico</button>
+              </div>
+          </div>
+          <div id="hl7Canvas" class="hl7-canvas"></div>
+          
+          <div id="canvasPopup" class="hl7-popup" style="display:none;">
+              <h4 style="margin:0 0 5px 0; font-size:13px; color:#2196F3">Mapear <span id="popupFieldId"></span></h4>
+              <select id="popupVariableSelect" onchange="document.getElementById('popupFixedContainer').style.display = this.value === 'fixedValue' ? 'flex' : 'none'">
+                  <option value="">-- Ignorar / Vacío --</option>
+                  <optgroup label="Inbound (Lo que recibes)">
+                      <option value="profilePatientId">ID Paciente</option>
+                      <option value="profilePatientName">Nombre Paciente</option>
+                      <option value="profileOrderId">ID de Orden</option>
+                      <option value="profileSampleId">Código de Muestra</option>
+                      <option value="profileTestCode">Código de Examen</option>
+                      <option value="profileTestName">Nombre de Examen</option>
+                  </optgroup>
+                  <optgroup label="Outbound (Lo que respondes)">
+                      <option value="profileResultValue">Valor de Resultado</option>
+                      <option value="profileResultUnit">Unidad de Resultado</option>
+                      <option value="profileResultCode">Código de Resultado</option>
+                      <option value="profileResultDocument">Documento PDF (Base64)</option>
+                  </optgroup>
+                  <optgroup label="Avanzado">
+                      <option value="fixedValue">📌 Valor Fijo Personalizado</option>
+                  </optgroup>
+              </select>
+              <div style="font-size:11px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; padding: 0 2px">
+                  <label for="popupSubcomponent" style="margin:0; font-weight:normal">Subcomponente (opc.):</label>
+                  <input type="number" id="popupSubcomponent" min="1" max="9" placeholder="ej. 1" style="width:45px; padding:2px; font-size:11px">
+              </div>
+              <div id="popupFixedContainer" style="display:none; font-size:11px; margin-bottom:8px; align-items:center; justify-content:space-between; padding: 0 2px">
+                  <label for="popupFixedValue" style="margin:0; font-weight:normal">Valor Fijo:</label>
+                  <input type="text" id="popupFixedValue" placeholder="ej. HIS" style="width:90px; padding:2px; font-size:11px">
+              </div>
+              <div class="row-btns">
+                  <button type="button" onclick="applyCanvasPopup()">Aplicar</button>
+                  <button type="button" class="ghost" onclick="closeCanvasPopup()">Cancelar</button>
+              </div>
+          </div>
+          
+          <div id="validatorModal" class="hl7-popup" style="display:none; width:650px; max-width:95vw; max-height:85vh; overflow-y:auto; background:#fff; padding:20px; border-radius:12px; border:1px solid #dbe5e8; box-shadow:0 12px 36px rgba(0,0,0,0.15)">
+              <h4 style="margin:0 0 10px 0; color:#176b7a; font-size:16px">✨ Auto-Generador de Contratos Semánticos</h4>
+              <p style="font-size:12px; margin-bottom:12px; color:#64747c; line-height:1.5">Pega un mensaje HL7 crudo (OML u ORU). Se conservarán segmentos, orden, repeticiones y componentes; los datos clínicos se convertirán en placeholders y los códigos estructurales en reglas editables.</p>
+              
+              <textarea id="validatorText" style="height:120px; font-family:Consolas,monospace; font-size:11px; width:100%; border:1px solid #dbe5e8; border-radius:6px; padding:10px" placeholder="MSH|^~\&|HIS..."></textarea>
+              
+              <div id="semanticTreeContainer" style="display:none; margin-top:14px;">
+                  <h4 style="margin:0 0 8px 0; font-size:13px; color:#17252b">Árbol Semántico Inferido <small style="font-weight:normal; color:#bc3d3d">(Puedes editarlo libremente)</small></h4>
+                  <textarea id="semanticTreeCode" style="height:250px; width:100%; resize:vertical; background:#1e1e1e; color:#d4d4d4; padding:12px; border-radius:6px; font-size:11px; font-family:Consolas,monospace; border:none;"></textarea>
+                  <h4 style="margin:10px 0 6px; font-size:13px; color:#17252b">Vista previa del contrato aplicado</h4>
+                  <pre id="inferredContractPreview" style="max-height:180px; overflow:auto; white-space:pre; background:#f7fafc; border:1px solid #dbe5e8; padding:10px; border-radius:6px; font-size:10px;"></pre>
+              </div>
+
+              <div class="row-btns" style="margin-top:16px">
+                  <button type="button" id="btnAnalyzeSemantic" onclick="generateSemanticTree()" style="background:#176b7a; padding:10px 16px;">Analizar Muestra 🧠</button>
+                  <button type="button" id="btnSaveInbound" onclick="saveSemanticTree('inbound')" style="display:none; background:#217a53; padding:10px 16px;">Guardar como Contrato INBOUND (Recepción)</button>
+                  <button type="button" id="btnSaveOutbound" onclick="saveSemanticTree('outbound')" style="display:none; background:#a76505; padding:10px 16px;">Guardar como Contrato OUTBOUND (Envío)</button>
+                  <button type="button" class="ghost" onclick="closeValidatorModal()" style="padding:10px 16px;">Cerrar</button>
+              </div>
+          </div>
+
+          <div class="row" style="margin-top:14px">
+              <button id="saveProfileButton" onclick="saveProtocolProfile()" style="background:#2b6cb0; padding:10px 20px; font-weight:bold;">Guardar perfil nuevo</button>
+              <button class="ghost" onclick="startNewProtocolProfile()">+ Nuevo perfil</button>
+              <button class="ghost" onclick="loadProtocolProfiles()">Ver versiones guardadas</button>
+          </div>
+          <p id="profileStatus" class="hint"></p>
+          <div class="cols-2" style="margin-top:12px; align-items:stretch;">
+              <div style="background:#f0f7f4; padding:10px; border-radius:6px; border:1px solid #c2d1c9; display:flex; flex-direction:column;">
+                  <h4 style="margin-top:0; color:#176b7a; font-size:13px">📥 Contrato de Entrada (Inbound)</h4>
+                  <p style="font-size:11px; margin-bottom:8px; color:#555; line-height:1.2;">Reglas de validación y esquema JSON que el Simulador exigirá para recibir las órdenes de Mirth.</p>
+                  <pre id="previewInboundBox" style="margin:0; max-height:250px; overflow-y:auto; font-size:10px; display:block; background:#fff; border:1px solid #ddd; padding:8px; border-radius:4px; flex-grow:1; color:#333;"></pre>
+              </div>
+              <div style="background:#fcf5eb; padding:10px; border-radius:6px; border:1px solid #e2d1bc; display:flex; flex-direction:column;">
+                  <h4 style="margin-top:0; color:#a76505; font-size:13px">📤 Mensaje de Salida (Outbound)</h4>
+                  <p style="font-size:11px; margin-bottom:8px; color:#555; line-height:1.2;">Mensaje base, contrato con placeholders y ejemplo HL7 generado con datos de prueba.</p>
+                  <pre id="profilePreview" style="margin:0; max-height:250px; overflow-y:auto; font-size:10px; display:block; background:#fff; border:1px solid #ddd; padding:8px; border-radius:4px; flex-grow:1; color:#333;"></pre>
+              </div>
+          </div>
+          <div id="profileVersions" class="stack" style="margin-top:12px"></div>
+        </article>
       </aside>
       <section class="grid">
-        <article class="panel">
+        <article class="panel analyzers dashboard">
           <h2>Analizadores</h2>
           <div id="analyzers" class="stack"></div>
         </article>
-        <article class="panel">
-          <h2>Rack / barcode</h2>
-          <div id="rack" class="rack"></div>
-        </article>
-        <article class="panel" style="grid-column:1/-1">
-          <h2>Worklist / cola</h2>
+
+        <article class="panel worklist">
+          <h2>Worklist / cola de ordenes</h2>
           <p id="worklistStatus" class="hint"></p>
-          <div class="scroll"><table><thead><tr><th>Muestra</th><th>Paciente</th><th>Equipo</th><th>Estado</th><th>Rack</th><th>Acciones</th></tr></thead><tbody id="orders"></tbody></table></div>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Orden</th>
+                  <th>Paciente</th>
+                  <th>Procedimiento</th>
+                  <th>Muestra</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="orders"></tbody>
+            </table>
+          </div>
         </article>
-        <article class="panel" style="grid-column:1/-1">
-          <h2>Mensajes</h2>
-          <div id="messages" class="stack"></div>
+
+        <article class="panel pacs">
+          <div class="row" style="justify-content:space-between">
+            <div>
+              <h2 style="margin-bottom:4px">PACS radiologia simulado</h2>
+              <p class="hint">Recibe ORM^O01 por MLLP, genera una imagen no diagnostica y notifica IMAGE_READY a Mirth.</p>
+            </div>
+            <span class="state" id="pacsListenerState">LISTENER</span>
+          </div>
+          <div class="banner" style="margin-top:12px">
+            Llave del estudio: <code>PID-3.1 (account_no) + OBR-3 (accession_no)</code>. El visor directo es solo para pruebas; el cifrado del enlace pertenece al HIS.
+          </div>
+          <p id="pacsStatus" class="hint"></p>
+          <div id="pacsStudies" class="pacs-cards"></div>
+        </article>
+
+        <article class="panel messages">
+          <h2>Mensajes HL7</h2>
+          <div id="messages" class="stack message-scroll"></div>
         </article>
       </section>
     </section>
   </main>
+    </div>
+  </div>
   <script>
     const el = id => document.getElementById(id);
     const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
     let analyzerList = [];
     let orderList = [];
+    let pacsStudyList = [];
+
+    function showPage(page, button) {
+      const titles = {
+        dashboard:["", ""],
+        pacs:["PACS radiologia", "Ordenes de imagen recibidas desde Mirth, generacion del estudio y notificacion de disponibilidad."],
+        operate:["Operar muestras", "Crea una muestra de prueba o escanea una orden que llegó desde el LIS/Mirth."],
+        analyzers:["Analizadores", "Consulta el estado de los equipos configurados y modifica su modo de operación."],
+        configure:["Configurar equipo", "Define cómo se identifica, recibe órdenes y entrega resultados el analizador simulado."],
+        protocol:["Diseñador HL7", "Crea versiones del contrato de comunicación sin modificar código."],
+        worklist:["Worklist", "Órdenes recibidas y su progreso dentro del equipo simulado."],
+        messages:["Mensajes", "Trazabilidad de los HL7/ASTM recibidos, enviados y sus ACK."]
+      };
+      document.body.dataset.page = page;
+      document.querySelectorAll("[data-page-link]").forEach(item => item.classList.toggle("active", item === button));
+      el("pageTitle").textContent = titles[page][0];
+      el("pageDescription").textContent = titles[page][1];
+      window.scrollTo({ top:0, behavior:"smooth" });
+    }
+
     async function get(path) { const r = await fetch(path); if (!r.ok) throw Error(path); return r.json(); }
-    async function post(path, body = {}) {
-      const r = await fetch(path, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
+    async function send(method, path, body = {}) {
+      const r = await fetch(path, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
       if (!r.ok) throw Error((await r.json()).detail || path);
       return r.json();
     }
-    async function patch(path, body = {}) {
-      const r = await fetch(path, { method:"PATCH", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
-      if (!r.ok) throw Error((await r.json()).detail || path);
-      return r.json();
-    }
-    function fillTests() {
-      const selected = analyzerList.find(a => a.id === el("analyzer").value);
-      el("tests").innerHTML = (selected?.supportedTests || []).map(t => `<option selected value="${esc(t)}">${esc(t)}</option>`).join("");
-      const manual = selected?.mode === "MANUAL";
-      el("createButton").disabled = !manual;
-      el("manualHint").textContent = manual ? "Disponible: este analizador crea barcode/sampleId manual." : "Desactivado: este analizador espera orden externa desde LIS/Mirth.";
-    }
-    async function createSample() {
-      const tests = [...el("tests").selectedOptions].map(o => o.value);
-      await post("/api/manual-samples", {
-        analyzerId: el("analyzer").value,
-        sampleId: el("sampleId").value,
-        barcode: el("sampleId").value,
-        patientId: el("patientId").value,
-        patientName: el("patientName").value,
-        tests
+    const post = (path, body = {}) => send("POST", path, body);
+    const patch = (path, body = {}) => send("PATCH", path, body);
+    const put = (path, body = {}) => send("PUT", path, body);
+
+    window.editingProfileId = null;
+
+    function profileDefinition() {
+      const type = el("profileMessageType").value.split("^");
+      const z = el("profileZSegment").value.trim();
+      const inboundMapping = (target, id) => { const paths=el(id).value.split(",").map(x=>x.trim()).filter(Boolean); return {target,source:paths[0] || "",alternatives:paths.slice(1)}; };
+      
+      const outboundMapping = (source, id) => { 
+          const paths = el(id).value.split(",").map(x=>x.trim()).filter(Boolean); 
+          return paths.map(p => ({target: p, source}));
+      };
+      
+      let allOutboundFields = [
+          ...outboundMapping("patient.id", "profilePatientId"),
+          ...outboundMapping("patient.name", "profilePatientName"),
+          ...outboundMapping("order.id", "profileOrderId"),
+          ...outboundMapping("sample.id", "profileSampleId"),
+          ...outboundMapping("test.code", "profileTestCode"),
+          ...outboundMapping("test.name", "profileTestName"),
+      ];
+      
+      let segments = [
+        { name:"MSH", fields:[{target:"MSH-3",source:"analyzer.id"},{target:"MSH-7",source:"system.timestamp"},{target:"MSH-9.1",sourceType:"fixed",value:type[0] || "ORU"},{target:"MSH-9.2",sourceType:"fixed",value:type[1] || "R01"},{target:"MSH-10",source:"system.messageId"},{target:"MSH-12",sourceType:"fixed",value:el("profileVersion").value}]},
+        { name:"ORC", fields:[{target:"ORC-1",sourceType:"fixed",value:"RE"}]},
+        { name:"OBX", repeatBy:"results", fields:[{target:"OBX-1",source:"counter"},{target:"OBX-2",sourceType:"fixed",value:el("profileResultObxType").value},{target:el("profileResultCode").value,source:"result.code"},{target:el("profileResultValue").value,source:"result.value"},{target:el("profileResultUnit").value,source:"result.unit"},{target:el("profileResultDocument").value,source:"resultDocument.pdfBase64"},{target:"OBX-11",sourceType:"fixed",value:"F"}].filter(f=>f.target && f.target.includes("-"))}
+      ];
+      
+      for (const field of allOutboundFields) {
+          const segName = field.target.split("-")[0];
+          let seg = segments.find(s => s.name === segName && !s.repeatBy);
+          if(!seg) { seg = {name:segName, fields:[]}; segments.push(seg); }
+          seg.fields.push(field);
+      }
+      
+      if (z && z.includes("-")) segments.push({name:z.split("-")[0].toUpperCase(),fields:[{target:z,sourceType:"fixed",value:"COMPATIBLE"}]});
+      const fixedStr = el("profileFixedMapping").value;
+      let fixedMap = {};
+      try { fixedMap = JSON.parse(fixedStr || "{}"); } catch(e){}
+      for (const [k, v] of Object.entries(fixedMap)) {
+          const segName = k.split("-")[0];
+          let seg = segments.find(s => s.name === segName && !s.repeatBy);
+          if(!seg) { seg = {name:segName, fields:[]}; segments.push(seg); }
+          seg.fields.push({target:k, sourceType:"fixed", value:v});
+      }
+      if (window.savedOutboundSchema?.formatVersion === 2) {
+          segments = structuredSchemaToOutboundSegments(window.savedOutboundSchema);
+      }
+      
+      if (!window.savedOutboundSchema) segments.sort((a, b) => {
+          let idxA = canvasSegments.indexOf(a.name);
+          let idxB = canvasSegments.indexOf(b.name);
+          if (idxA === -1) idxA = 999;
+          if (idxB === -1) idxB = 999;
+          return idxA - idxB;
       });
-      el("sampleId").value = "SMP-" + String(Math.floor(Math.random() * 9999)).padStart(4, "0");
-      await refresh();
+      
+      return { 
+          name: el("profileName").value, 
+          activate: true, 
+          inbound: {
+              strictValidation: el("profileStrictValidation").checked,
+              messageType: el("profileInboundType").value,
+              schema: window.savedInboundSchema || null,
+              rawHL7: window.savedInboundRawHL7 || null,
+              mappings: [
+                  inboundMapping("patient.id","profilePatientId"),
+                  inboundMapping("patient.name","profilePatientName"),
+                  inboundMapping("order.id","profileOrderId"),
+                  inboundMapping("sample.id","profileSampleId"),
+                  inboundMapping("test.code","profileTestCode"),
+                  inboundMapping("test.name","profileTestName")
+              ]
+          }, 
+           outbound: {
+               schema: window.savedOutboundSchema || null,
+               rawHL7: window.savedOutboundRawHL7 || null,
+               events: {
+                  RESULT_FINAL: {
+                      messageType: window.savedOutboundSchema?.messageType || el("profileMessageType").value,
+                      version: el("profileVersion").value,
+                      segments
+                  }
+              }
+          }
+      };
     }
+    
+    async function saveProtocolProfile() {
+        try {
+            const analyzerId = el("profileAnalyzer").value;
+            const definition = profileDefinition();
+            const editing = window.editingProfileId;
+            const profile = editing
+                ? await put(`/api/analyzers/${analyzerId}/protocol-profiles/${editing}`, definition)
+                : await post(`/api/analyzers/${analyzerId}/protocol-profiles`, definition);
+            window.editingProfileId = profile.id;
+            el("saveProfileButton").textContent = `Actualizar ${profile.name} v${profile.version}`;
+            el("profileStatus").textContent = editing
+                ? `Revisión ${profile.name} v${profile.version} creada; se conserva el contrato anterior.`
+                : `Perfil ${profile.name} v${profile.version} creado y activado.`;
+            if (profile.status !== "ACTIVE") el("profileStatus").textContent = "Borrador guardado. Completa entrada y salida para activar el equipo; permanece en STANDBY si no tiene otro contrato activo.";
+            await loadProtocolProfiles(false);
+        } catch(error) {
+            el("profileStatus").textContent = error.message;
+        }
+    }
+
+    function startNewProtocolProfile() {
+        resetProtocolProfile();
+        el("profileStatus").textContent = "Modo nuevo perfil: el próximo guardado creará una plantilla independiente.";
+    }
+
+    async function deleteProtocolProfile(id) {
+        if(!confirm("¿Estás seguro de eliminar esta versión del perfil?")) return;
+        try {
+            const analyzerId = el("profileAnalyzer").value;
+            const response = await fetch(`/api/analyzers/${analyzerId}/protocol-profiles/${id}`, {method: "DELETE"});
+            if (!response.ok) throw Error((await response.json()).detail || "No se pudo retirar el perfil");
+            if (window.editingProfileId === id) resetProtocolProfile();
+            el("profileStatus").textContent = "Perfil eliminado correctamente.";
+            loadProtocolProfiles();
+        } catch(error) { el("profileStatus").textContent=error.message; }
+    }
+    
+    function editProtocolProfile(id) {
+        const p = window.cachedProfiles.find(x => x.id === id);
+        if(p) {
+            resetProtocolProfile();
+            hydrateProtocolProfile(p);
+            window.editingProfileId = p.id;
+            el("saveProfileButton").textContent = `Actualizar ${p.name} v${p.version}`;
+            el("profileStatus").textContent = `Editando ${p.name} v${p.version}. Guardar actualizará este mismo perfil.`;
+            renderCanvas();
+            triggerAutoPreview();
+        }
+    }
+
+    async function previewProtocolProfile() {
+      try {
+        const analyzerId=el("profileAnalyzer").value;
+        const preview=await post(`/api/analyzers/${analyzerId}/protocol-profiles/preview`, profileDefinition());
+        el("profilePreview").style.display="block";
+        el("profilePreview").textContent=buildOutboundPreviewText(preview.message);
+        el("profilePreview").scrollIntoView({behavior:"smooth",block:"start"});
+        el("profileStatus").textContent="Vista previa generada con datos de prueba; no se envió ni guardó.";
+      } catch(error) { el("profileStatus").textContent=error.message; }
+    }
+    function setProtocolPath(inputId, mappings, target, fallback="") {
+      const mapping=(mappings || []).find(item=>item.target===target);
+      el(inputId).value=mapping ? [mapping.source,...(mapping.alternatives || [])].filter(Boolean).join(", ") : fallback;
+    }
+    function hydrateProtocolProfile(profile) {
+      const inbound=profile.inbound || {}, mappings=inbound.mappings || [];
+      const event=Object.values(profile.outbound?.events || {})[0] || {}, segments=event.segments || [];
+      window.savedInboundSchema = inbound.schema || null;
+      window.savedInboundRawHL7 = inbound.rawHL7 || null;
+      if (window.savedInboundSchema) {
+          if(document.getElementById("semanticTreeCode")) document.getElementById("semanticTreeCode").value = JSON.stringify(window.savedInboundSchema, null, 2);
+          if(document.getElementById("semanticTreeContainer")) document.getElementById("semanticTreeContainer").style.display = "block";
+          window.strictRequiredFields = requiredPathsFromContract(window.savedInboundSchema);
+      } else {
+          if(document.getElementById("semanticTreeCode")) document.getElementById("semanticTreeCode").value = "";
+          if(document.getElementById("semanticTreeContainer")) document.getElementById("semanticTreeContainer").style.display = "none";
+      }
+      window.savedOutboundSchema = profile.outbound?.schema || null;
+      window.savedOutboundRawHL7 = profile.outbound?.rawHL7 || null;
+      const segment=name=>segments.find(item=>item.name===name) || {fields:[]};
+      const field=(name,target)=>segment(name).fields.find(item=>item.target===target);
+      const sourceTarget=(name,source,fallback)=>segment(name).fields.find(item=>item.source===source)?.target || fallback;
+      el("profileName").value=profile.name || "Perfil HL7"; el("profileInboundType").value=inbound.messageType || "OML^O21";
+      el("profileStrictValidation").checked = inbound.strictValidation !== false;
+      setProtocolPath("profilePatientId",mappings,"patient.id","PID-3"); setProtocolPath("profileOrderId",mappings,"order.id","ORC-2, OBR-2"); setProtocolPath("profileSampleId",mappings,"sample.id","SPM-2, OBR-3, ORC-3"); setProtocolPath("profileTestCode",mappings,"test.code","OBR-4.1"); setProtocolPath("profileTestName",mappings,"test.name","OBR-4.2");
+      el("profileMessageType").value=event.messageType || `${field("MSH","MSH-9.1")?.value || "ORU"}^${field("MSH","MSH-9.2")?.value || "R01"}`; el("profileVersion").value=event.version || field("MSH","MSH-12")?.value || "2.5.1";
+      el("profileResultValue").value=sourceTarget("OBX","result.value","OBX-5"); el("profileResultUnit").value=sourceTarget("OBX","result.unit","OBX-6"); el("profileResultCode").value=sourceTarget("OBX","result.code","OBX-3.1");
+      const privateSegment=segments.find(item=>/^Z/.test(item.name)); el("profileZSegment").value=privateSegment?.fields?.[0]?.target || "";
+      if (inbound.schema?.formatVersion === 2) {
+          const inboundSegments = (inbound.schema.segments || []).map(item => item.name).filter(Boolean);
+          if (inboundSegments.length) canvasSegments = [...new Set(inboundSegments)];
+      }
+      
+      const z = el("profileZSegment").value;
+      if (z) {
+          const seg = z.split("-")[0];
+          if (!canvasSegments.includes(seg)) canvasSegments.push(seg);
+      }
+      renderCanvas();
+      triggerAutoPreview();
+      updateSemanticBadges();
+    }
+    function resetProtocolProfile() {
+      window.editingProfileId = null;
+      if (el("saveProfileButton")) el("saveProfileButton").textContent = "Guardar perfil nuevo";
+      window.savedInboundSchema = null;
+      window.savedOutboundSchema = null;
+      window.savedInboundRawHL7 = null;
+      window.savedOutboundRawHL7 = null;
+      window.strictRequiredFields = [];
+      el("profileStrictValidation").checked = true;
+      el("profileName").value="Perfil ORU estándar"; el("profileInboundType").value="OML^O21"; el("profileMessageType").value="ORU^R01"; el("profileVersion").value="2.5.1";
+      el("profilePatientId").value="PID-3"; el("profileOrderId").value="ORC-2, OBR-2, OBR-3"; el("profileSampleId").value="SPM-2, OBR-3, ORC-3"; el("profileTestCode").value="OBR-4.1"; el("profileTestName").value="OBR-4.2";
+      el("profileResultValue").value="OBX-5"; el("profileResultUnit").value="OBX-6"; el("profileResultCode").value="OBX-3.1"; el("profileZSegment").value="";
+      canvasSegments = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM", "OBX"];
+      renderCanvas();
+      triggerAutoPreview();
+      updateSemanticBadges();
+    }
+    async function onProtocolAnalyzerChanged() { 
+        window.editingProfileId = null;
+        if (el("saveProfileButton")) el("saveProfileButton").textContent = "Guardar perfil nuevo";
+        await loadProtocolProfiles(true); 
+        renderCanvas();
+        triggerAutoPreview();
+    }
+
+    async function activateProtocolProfile(id) {
+        const profile = (window.cachedProfiles || []).find(item => item.id === id);
+        if (!profile || profile.status === "ACTIVE") return;
+        if (!confirm(`¿Activar ${profile.name} v${profile.version}? El perfil activo actual será archivado.`)) return;
+        try {
+            const analyzerId = el("profileAnalyzer").value;
+            const activated = await post(`/api/analyzers/${analyzerId}/protocol-profiles/${id}/activate`);
+            window.editingProfileId = null;
+            el("saveProfileButton").textContent = "Guardar perfil nuevo";
+            el("profileStatus").textContent = `${activated.name} v${activated.version} está activo para este analizador.`;
+            await loadProtocolProfiles(true);
+        } catch(error) {
+            el("profileStatus").textContent = error.message;
+        }
+    }
+
+    function renderProtocolProfileCard(profile) {
+        const active = profile.status === "ACTIVE";
+        const cardStyle = active
+            ? "position:relative; border:2px solid #217a53; background:#f0f7f4"
+            : "position:relative";
+        const statusStyle = active
+            ? "background:#217a53; color:white; padding:3px 7px; border-radius:10px"
+            : "background:#e9eef0; color:#64747c; padding:3px 7px; border-radius:10px";
+        const activateButton = active ? "" : `<button type="button" style="padding:2px 8px; font-size:11px; background:#217a53" onclick="activateProtocolProfile('${profile.id}')">✓ Activar</button>`;
+        return `<div class="card" style="${cardStyle}">
+            <strong>${esc(profile.name)} v${profile.version}</strong>
+            <span style="${statusStyle}">${active ? "ACTIVO" : esc(profile.status)}</span>
+            ${active ? '<div class="mini" style="color:#217a53;font-weight:bold;margin-top:4px">Este es el contrato utilizado actualmente por el analizador.</div>' : ''}
+            <div class="mini">Entrada: ${esc(profile.inbound?.messageType||"-")} | Salida: ${esc(Object.values(profile.outbound?.events||{})[0]?.messageType||"-")}</div>
+            <div style="margin-top:10px; display:flex; gap:5px; flex-wrap:wrap">
+                ${activateButton}
+                <button type="button" class="ghost" style="padding:2px 8px; font-size:11px" onclick="editProtocolProfile('${profile.id}')">✏️ Editar</button>
+                <button type="button" class="ghost" style="padding:2px 8px; font-size:11px; color:red" onclick="deleteProtocolProfile('${profile.id}')">🗑️ Eliminar</button>
+            </div>
+        </div>`;
+    }
+
+    async function loadProtocolProfiles(hydrate=false) { 
+        try { 
+            const profiles=await get(`/api/analyzers/${el("profileAnalyzer").value}/protocol-profiles`); 
+            const active=profiles.find(p=>p.status==="ACTIVE"); 
+            window.cachedProfiles = profiles;
+            if (hydrate) { 
+                if (active) { hydrateProtocolProfile(active); el("profileStatus").textContent=`Perfil activo cargado: ${active.name} v${active.version}. Pulsa Editar para modificarlo.`; } 
+                else { resetProtocolProfile(); el("profileStatus").textContent="Este analizador no tiene un perfil HL7 guardado todavía."; } 
+            } 
+            el("profileVersions").innerHTML=profiles.map(renderProtocolProfileCard).join("") || '<div class="custom-map-empty">Este analizador aún no tiene perfiles versionados.</div>'; 
+        } catch(error) { el("profileStatus").textContent=error.message; } 
+    }
+
+    async function createSample() {
+      try {
+        await post("/api/manual-samples", {
+          analyzerId: el("analyzer").value,
+          sampleId: el("sampleId").value,
+          barcode: el("sampleId").value,
+          sampleName: el("sampleName").value,
+          patientId: el("patientId").value,
+          patientName: el("patientName").value,
+          visitType: el("visitType").value,
+          visitNumber: el("visitNumber").value,
+          orderId: el("orderId").value,
+          priority: el("priority").value,
+          clinicalInfo: el("clinicalInfo").value,
+          topographyCode: el("topographyCode").value,
+          topographyName: el("topographyName").value,
+          observations: el("observations").value.split(/\r?\n/).map(x => x.trim()).filter(Boolean),
+          tests: [el("procedureCode").value],
+          requestedAt: new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14)
+        });
+        el("manualStatus").textContent = "Orden manual creada.";
+        await refresh();
+      } catch (error) {
+        el("manualStatus").textContent = error.message;
+      }
+    }
+
     async function setMode(id, mode) { await patch(`/api/analyzers/${id}/mode`, { mode }); await refresh(); }
     async function setAnalyzerState(id, state) { await patch(`/api/analyzers/${id}/state`, { state }); await refresh(); }
     async function setScenario(id, scenario) { await patch(`/api/analyzers/${id}/scenario`, { scenario }); await refresh(); }
-    async function put(path, body = {}) {
-      const r = await fetch(path, { method:"PUT", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
-      if (!r.ok) throw Error((await r.json()).detail || path);
-      return r.json();
+    async function clearAnalyzer(id) {
+      if (!confirm(`Se eliminara todo lo recibido del analizador ${id}.`)) return;
+      try {
+        await post(`/api/analyzers/${id}/clear`, {});
+        el("worklistStatus").textContent = `Se limpio la informacion de ${id}.`;
+        await refresh();
+      } catch (error) {
+        el("worklistStatus").textContent = error.message;
+      }
     }
+
+    function applyTemplate() {
+      const templates = {
+        GENERIC_HL7: { profile:"GENERIC", protocol:"HL7", port:5010, mode:"MANUAL", tests:"CBC,WBC,HGB,PLT" },
+        GENERIC_ASTM: { profile:"GENERIC", protocol:"ASTM", port:5011, mode:"MANUAL", tests:"CBC,WBC,HGB,PLT" },
+        ANAPATH: { profile:"ANAPATH", protocol:"HL7", port:9500, mode:"BIDIRECTIONAL", tests:"" }
+      };
+      const template = templates[el("cfgTemplate").value];
+      el("cfgProfile").value = template.profile;
+      el("cfgProtocol").value = template.protocol;
+      el("cfgListenPort").value = template.port;
+      el("cfgMode").value = template.mode;
+      el("cfgTests").value = template.tests;
+      el("configStatus").textContent = "Plantilla aplicada. Revisa identidad, puertos y destino antes de guardar.";
+    }
+
     function configPayload() {
       const protocol = el("cfgProtocol").value;
       return {
         id: el("cfgId").value,
         name: el("cfgName").value,
         vendor: el("cfgVendor").value,
+        profile: el("cfgProfile").value,
         protocol,
         transport: protocol === "HL7" ? "MLLP" : "TCP_SIMULATED",
         listenPort: Number(el("cfgListenPort").value || 0),
         resultDestinationHost: el("cfgDestinationHost").value,
         resultDestinationPort: Number(el("cfgDestinationPort").value || 0),
-        supportedTests: el("cfgTests").value.split(",").map(x => x.trim()).filter(Boolean),
+        supportedTests: el("cfgTests").value ? el("cfgTests").value.split(",").map(x => x.trim()).filter(Boolean) : [],
         mode: el("cfgMode").value
       };
     }
+
     function editAnalyzer(id) {
       const analyzer = analyzerList.find(a => a.id === id);
       if (!analyzer) return;
       el("cfgId").value = analyzer.id;
       el("cfgName").value = analyzer.name;
       el("cfgVendor").value = analyzer.vendor;
+      el("cfgProfile").value = analyzer.profile || "GENERIC";
       el("cfgProtocol").value = analyzer.protocol;
       el("cfgListenPort").value = analyzer.listenPort || 0;
       el("cfgDestinationHost").value = analyzer.resultDestinationHost;
       el("cfgDestinationPort").value = analyzer.resultDestinationPort;
       el("cfgTests").value = (analyzer.supportedTests || []).join(",");
       el("cfgMode").value = analyzer.mode;
-      el("configStatus").textContent = `Editando ${analyzer.id}. Cambia host/puerto y presiona Guardar.`;
+      el("cfgExistingAnalyzer").value = analyzer.id;
+      el("configStatus").textContent = `Editando ${analyzer.id}`;
     }
+
+    function loadSelectedAnalyzer() {
+      const id = el("cfgExistingAnalyzer").value;
+      if (id) editAnalyzer(id);
+    }
+
+    function newAnalyzerForm() {
+      el("cfgExistingAnalyzer").value = "";
+      el("cfgId").value = "";
+      el("cfgName").value = "";
+      el("cfgVendor").value = "";
+      el("cfgProfile").value = "GENERIC";
+      el("cfgTests").value = "";
+      el("configStatus").textContent = "Nuevo analizador: aplica una plantilla o completa los datos.";
+    }
+
     async function createAnalyzerConfig() {
       const payload = configPayload();
       try {
@@ -226,123 +816,844 @@
         el("configStatus").textContent = error.message;
       }
     }
-    async function saveAnalyzerConfig() {
-      const payload = configPayload();
+
+    async function scanSampleBarcode() {
       try {
-        await put(`/api/analyzers/${payload.id}`, payload);
-        el("configStatus").textContent = `Analizador ${payload.id} actualizado.`;
+        await post(`/api/analyzers/${el("scanAnalyzer").value}/scan`, { barcode: el("barcodeInput").value });
+        el("scanStatus").textContent = "Muestra cargada.";
         await refresh();
       } catch (error) {
-        el("configStatus").textContent = error.message;
+        el("scanStatus").textContent = error.message;
       }
     }
-    async function scanSampleBarcode() {
-      await post(`/api/analyzers/${el("scanAnalyzer").value}/scan`, { barcode: el("barcodeInput").value });
-      el("barcodeInput").value = "";
-      await refresh();
-    }
-    async function runWorklistAction(action) {
+
+    async function runAction(action) {
       try {
         await action();
         el("worklistStatus").textContent = "";
         await refresh();
       } catch (error) {
         el("worklistStatus").textContent = error.message;
-        await refresh();
       }
     }
-    async function loadOrder(id, barcode) { await runWorklistAction(() => post(`/api/orders/${id}/load`, { barcode })); }
-    async function processOrder(id) { await runWorklistAction(() => post(`/api/orders/${id}/process`, { sendResult:false })); }
-    async function sendOrder(id) { await runWorklistAction(() => post(`/api/orders/${id}/send`, {})); }
-    async function processAndSend(id) { await runWorklistAction(() => post(`/api/orders/${id}/process`, { sendResult:true })); }
+
+    async function runPacsAction(action) {
+      try {
+        el("pacsStatus").textContent = "Procesando...";
+        await action();
+        el("pacsStatus").textContent = "";
+        await refresh();
+      } catch (error) {
+        el("pacsStatus").textContent = error.message;
+      }
+    }
+
+    const processPacsStudy = id => runPacsAction(() => post(`/api/pacs/studies/${id}/process`, { sendNotification:false }));
+    const processAndNotifyPacsStudy = id => runPacsAction(() => post(`/api/pacs/studies/${id}/process`, { sendNotification:true }));
+    const notifyPacsStudy = id => runPacsAction(() => post(`/api/pacs/studies/${id}/notify`, {}));
+    const viewPacsStudy = id => window.open(`/api/pacs/studies/${encodeURIComponent(id)}/viewer`, "_blank", "noopener");
+
+    function pacsStudyCard(study) {
+      const canGenerate = ["ORDER_RECEIVED","IMAGE_GENERATION_ERROR"].includes(study.status);
+      const imageReady = ["IMAGE_READY","NOTIFYING_MIRTH","NOTIFICATION_ERROR","COMPLETED"].includes(study.status);
+      const canNotify = ["IMAGE_READY","NOTIFICATION_ERROR","COMPLETED"].includes(study.status);
+      return `<div class="card pacs-study">
+        <div class="row" style="justify-content:space-between">
+          <div><strong>${esc(study.procedureCode || "IMG")} - ${esc(study.procedureName || "Estudio de imagen")}</strong><br><small>${esc(study.patientName || "-")}</small></div>
+          <span class="state ${esc(study.status)}">${esc(study.status)}</span>
+        </div>
+        <div class="study-meta">
+          <div><small>account_no</small><br><code>${esc(study.accountNo)}</code></div>
+          <div><small>accession_no</small><br><code>${esc(study.accessionNo)}</code></div>
+          <div><small>Modalidad / prioridad</small><br><code>${esc(study.modality || "-")} / ${esc(study.priority || "-")}</code></div>
+        </div>
+        <div class="mini">Orden ${esc(study.orderId)} · MSG ${esc(study.sourceMessageControlId || "-")} · Servicio ${esc(study.service || "-")}</div>
+        <div class="row">
+          <button ${canGenerate ? "" : "disabled"} onclick="processPacsStudy('${esc(study.id)}')">Generar imagen</button>
+          <button class="secondary" ${canGenerate ? "" : "disabled"} onclick="processAndNotifyPacsStudy('${esc(study.id)}')">Generar y notificar</button>
+          <button class="ghost" ${imageReady ? "" : "disabled"} onclick="viewPacsStudy('${esc(study.id)}')">Ver imagen</button>
+          <button class="warn" ${canNotify ? "" : "disabled"} onclick="notifyPacsStudy('${esc(study.id)}')">${study.status === "COMPLETED" ? "Reenviar READY" : "Notificar READY"}</button>
+        </div>
+        ${study.imageReadyAt ? `<div class="mini">Imagen lista: ${esc(study.imageReadyAt)}</div>` : ""}
+      </div>`;
+    }
+
+    const loadOrder = (id, barcode) => runAction(() => post(`/api/orders/${id}/load`, { barcode }));
+    const processOrder = id => runAction(() => post(`/api/orders/${id}/process`, { sendResult:false }));
+    const sendOrder = id => runAction(() => post(`/api/orders/${id}/send`, {}));
+    const resendOrder = id => runAction(() => post(`/api/orders/${id}/send`, {}));
+    const processAndSend = id => runAction(() => post(`/api/orders/${id}/process`, { sendResult:true }));
+    const emitStatus = id => runAction(() => post(`/api/orders/${id}/emit`, { eventType:"STATUS_CHANGE" }));
+    const emitNewSample = id => {
+      const procedureCode = prompt("Codigo nuevo procedimiento", "P130");
+      if (procedureCode === null) return Promise.resolve();
+      const procedureName = prompt("Descripcion nuevo procedimiento", "Puncion aspiracion con aguja fina (PAAF)");
+      if (procedureName === null) return Promise.resolve();
+      const sampleId = prompt("Nuevo Sample ID", "SMP-001-A");
+      if (sampleId === null) return Promise.resolve();
+      return runAction(() => post(`/api/orders/${id}/emit`, {
+        eventType:"NEW_SAMPLE",
+        newProcedureCode: procedureCode,
+        newProcedureName: procedureName,
+        newSampleId: sampleId,
+        newSampleCode: sampleId,
+        newSampleName: "Muestra adicional"
+      }));
+    };
+    const emitDelete = id => runAction(() => post(`/api/orders/${id}/emit`, { eventType:"DELETE_SAMPLE" }));
+    const emitSupplementary = id => runAction(() => post(`/api/orders/${id}/emit`, { eventType:"REPORT", reportStatus:"C" }));
+    const emitCancelledReport = id => runAction(() => post(`/api/orders/${id}/emit`, { eventType:"REPORT", reportStatus:"X" }));
+
+    function analyzerActions(a) {
+      const scenarios = a.behavior?.allowedScenarios?.length ? a.behavior.allowedScenarios : ["NORMAL","FORCE_CRITICAL","SAMPLE_ERROR","NO_RESPONSE","MALFORMED_RESULT","REPORT_SUPPLEMENTARY","REPORT_CANCELLED"];
+      return `<div class="row" style="margin-top:8px">
+        <select style="max-width:190px" onchange="setMode('${esc(a.id)}', this.value)">
+          <option value="MANUAL" ${a.mode === "MANUAL" ? "selected" : ""}>Manual</option>
+          <option value="BIDIRECTIONAL" ${a.mode === "BIDIRECTIONAL" ? "selected" : ""}>Bidireccional</option>
+        </select>
+        <select style="max-width:170px" onchange="setAnalyzerState('${esc(a.id)}', this.value)">
+          ${["IDLE","OFFLINE","MAINTENANCE","CALIBRATION","QC_RUNNING","REAGENT_LOW","RACK_FULL","DOOR_OPEN"].map(s => `<option value="${s}" ${a.state === s ? "selected" : ""}>${s}</option>`).join("")}
+        </select>
+        <select style="max-width:190px" onchange="setScenario('${esc(a.id)}', this.value)">
+          ${scenarios.map(s => `<option value="${esc(s)}" ${(a.scenario || "NORMAL") === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
+        </select>
+        <button class="ghost" onclick="editAnalyzer('${esc(a.id)}')">Editar</button>
+        <button class="warn" onclick="clearAnalyzer('${esc(a.id)}')">Limpiar recibidos</button>
+      </div>`;
+    }
+
     function actionButtons(order) {
       const analyzer = analyzerList.find(a => a.id === order.analyzerId);
-      const canLoad = order.status === "WAITING_SAMPLE" && analyzer?.mode === "MANUAL";
+      const canLoad = order.status === "WAITING_SAMPLE";
       const canProcess = order.status === "SAMPLE_LOADED";
       const canSend = order.status === "RESULT_READY";
-      const canRetry = order.status === "ERROR";
+      const canResend = ["COMPLETED", "ERROR"].includes(order.status) && Array.isArray(order.results) && order.results.length > 0;
+      const events = new Set(analyzer?.behavior?.outboundEvents || []);
+      const hasEvent = event => events.has(event) || (event === "REPORT" && events.size === 0);
       return `<div class="row">
         <button ${canLoad ? "" : "disabled"} onclick="loadOrder('${order.id}','${esc(order.barcode)}')">Cargar</button>
         <button class="warn" ${canProcess ? "" : "disabled"} onclick="processOrder('${order.id}')">Procesar</button>
-        <button ${canSend ? "" : "disabled"} onclick="sendOrder('${order.id}')">Enviar</button>
-        <button class="warn" ${canRetry ? "" : "disabled"} onclick="sendOrder('${order.id}')">Reintentar</button>
-        <button ${canProcess ? "" : "disabled"} onclick="processAndSend('${order.id}')">Todo</button>
-        ${analyzer?.mode === "BIDIRECTIONAL" && order.status === "WAITING_SAMPLE" ? `<small class="mini">Escanear ${esc(order.barcode)}</small>` : ""}
+        <button ${canSend ? "" : "disabled"} onclick="sendOrder('${order.id}')">Enviar informe</button>
+        <button class="secondary" ${canResend ? "" : "disabled"} onclick="resendOrder('${order.id}')">Reenviar resultado</button>
+        <button class="secondary" ${canProcess ? "" : "disabled"} onclick="processAndSend('${order.id}')">Todo</button>
+        ${hasEvent("STATUS_CHANGE") ? `<button class="ghost" onclick="emitStatus('${order.id}')">SC/IP</button>` : ""}
+        ${hasEvent("NEW_SAMPLE") ? `<button class="ghost" onclick="emitNewSample('${order.id}')">Nueva muestra</button>` : ""}
+        ${hasEvent("DELETE_SAMPLE") ? `<button class="ghost" onclick="emitDelete('${order.id}')">Eliminar</button>` : ""}
+        ${hasEvent("REPORT_SUPPLEMENTARY") ? `<button class="ghost" onclick="emitSupplementary('${order.id}')">Suplementario</button>` : ""}
+        ${hasEvent("REPORT_CANCELLED") ? `<button class="ghost" onclick="emitCancelledReport('${order.id}')">Cancelar informe</button>` : ""}
       </div>`;
     }
-    function renderRack() {
-      const active = orderList.filter(o => !["COMPLETED","ERROR"].includes(o.status)).slice(0, 50);
-      const byPosition = Object.fromEntries(active.map(o => [o.rackPosition, o]));
-      const tubes = [];
-      for (let i = 1; i <= 50; i++) {
-        const pos = `R${String(Math.floor((i - 1) / 10) + 1).padStart(2, "0")}-P${String((i - 1) % 10 + 1).padStart(2, "0")}`;
-        const order = byPosition[pos];
-        tubes.push(`<div class="tube ${order ? "loaded" : ""}"><strong>${pos}</strong><br>${order ? `${esc(order.sampleId)}<br>${esc(order.status)}` : "Libre"}</div>`);
-      }
-      el("rack").innerHTML = tubes.join("");
+
+    // El refresco automático no debe cerrar el mensaje que el usuario está leyendo.
+    const expandedMessageIds = new Set();
+    function toggleMessageDetail(node) {
+      const id = node.dataset.messageId;
+      if (!id) return;
+      if (node.open) expandedMessageIds.add(id);
+      else expandedMessageIds.delete(id);
     }
+
     async function refresh() {
-      const [dash, analyzers, orders, messages] = await Promise.all([
-        get("/api/dashboard"), get("/api/analyzers"), get("/api/orders"), get("/api/messages")
+      const [dash, analyzers, orders, messages, pacsStudies] = await Promise.all([
+        get("/api/dashboard"), get("/api/analyzers"), get("/api/orders"), get("/api/messages"), get("/api/pacs/studies")
       ]);
       analyzerList = analyzers;
+      const portPool = await get("/api/ports");
+      el("allowedListenPorts").innerHTML = portPool.ports.map(p => `<option value="${p.port}">${p.analyzerId ? `Asignado: ${esc(p.analyzerId)}` : "Disponible"}</option>`).join("");
+      el("portPoolHint").textContent = portPool.restricted ? "Pool publicado configurado. Un equipo por puerto; 0 deshabilita el listener." : "Sin restricción de pool. Verificar publicación en Docker antes de elegir un puerto.";
       orderList = orders;
+      pacsStudyList = pacsStudies;
+      const configuredSelection = el("cfgExistingAnalyzer").value;
+      el("cfgExistingAnalyzer").innerHTML = `<option value="">Nuevo analizador…</option>` + analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.id)}</option>`).join("");
+      if (configuredSelection) el("cfgExistingAnalyzer").value = configuredSelection;
+      const profileSelection = el("profileAnalyzer").value;
+      el("profileAnalyzer").innerHTML = analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.id)}</option>`).join("");
+      if (profileSelection) el("profileAnalyzer").value = profileSelection;
       el("mAnalyzers").textContent = dash.analyzerCount;
       el("mListeners").textContent = dash.activeListenerCount;
       el("mPending").textContent = dash.pendingOrderCount;
       el("mMessages").textContent = dash.messageCount;
       el("mErrors").textContent = dash.errorCount;
+
       const previous = el("analyzer").value;
       const previousScan = el("scanAnalyzer").value;
-      el("analyzer").innerHTML = analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} (${esc(a.protocol)})</option>`).join("");
+      el("analyzer").innerHTML = analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} (${esc(a.profile || a.protocol)})</option>`).join("");
       el("scanAnalyzer").innerHTML = analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} (${esc(a.mode)})</option>`).join("");
       if (previous) el("analyzer").value = previous;
       if (previousScan) el("scanAnalyzer").value = previousScan;
-      fillTests();
+
       el("analyzers").innerHTML = analyzers.map(a => `<div class="card">
-        <div class="row"><h3>${esc(a.name)}</h3><span class="state ${esc(a.state)}">${esc(a.state)}</span></div>
-        <div class="row">
-          <select style="max-width:190px" onchange="setMode('${esc(a.id)}', this.value)">
-            <option value="MANUAL" ${a.mode === "MANUAL" ? "selected" : ""}>Manual / unidireccional</option>
-            <option value="BIDIRECTIONAL" ${a.mode === "BIDIRECTIONAL" ? "selected" : ""}>Bidireccional</option>
-          </select>
-          <span class="state">${esc(a.mode)}</span>
-          <button class="secondary" onclick="editAnalyzer('${esc(a.id)}')">Editar</button>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <select style="max-width:170px" onchange="setAnalyzerState('${esc(a.id)}', this.value)">
-            ${["IDLE","OFFLINE","MAINTENANCE","CALIBRATION","QC_RUNNING","REAGENT_LOW","RACK_FULL","DOOR_OPEN"].map(s => `<option value="${s}" ${a.state === s ? "selected" : ""}>${s}</option>`).join("")}
-          </select>
-          <select style="max-width:190px" onchange="setScenario('${esc(a.id)}', this.value)">
-            ${["NORMAL","FORCE_CRITICAL","SAMPLE_ERROR","NO_RESPONSE","MALFORMED_RESULT"].map(s => `<option value="${s}" ${(a.scenario || "NORMAL") === s ? "selected" : ""}>${s}</option>`).join("")}
-          </select>
-        </div>
-        <div class="mini">${esc(a.vendor)} - ${esc(a.protocol)} / ${esc(a.transport)} - listener ${a.listenerActive ? "ON" : "OFF"} ${esc(a.listenerHost || "")}</div>
-        <div class="mini">Destino resultados: ${esc(a.resultDestinationHost)}:${esc(a.resultDestinationPort)}</div>
-        <div class="mini">Muestra: ${esc(a.currentSampleId || "-")} | ACK: ${esc(a.lastAckCode || "-")} | Escenario: ${esc(a.scenario || "NORMAL")}</div>
+        <div class="row"><h3>${esc(a.name)}</h3><span class="state ${esc(a.state)}">${esc(a.state)}</span><span class="state">${esc(a.mode)}</span></div>
+        ${analyzerActions(a)}
+        <div class="mini">${esc(a.vendor)} - ${esc(a.protocol)} / ${esc(a.transport)} / ${esc(a.profile || "GENERIC")} - listener ${a.listenerActive ? "ON" : "OFF"} ${esc(a.listenerHost || "")}</div>
+        ${a.protocol === "HL7" && !a.contractReady ? '<div class="hint">STANDBY: completa y activa los contratos de entrada y salida en el editor HL7.</div>' : ""}
+        <div class="mini">Destino: ${esc(a.resultDestinationHost)}:${esc(a.resultDestinationPort)} | ACK: ${esc(a.lastAckCode || "-")} | Escenario: ${esc(a.scenario || "NORMAL")}</div>
+        <div class="mini">HL7 acepta: ${esc((a.behavior?.acceptedMessageTypes || []).join(", ") || "-")} | Requeridos: ${esc((a.behavior?.requiredFields || []).join(", ") || "-")}</div>
         <div class="bar"><span style="width:${Number(a.progress || 0)}%"></span></div>
-        <small>${esc(a.supportedTests.join(", "))}</small>
+        <small>${a.supportedTests?.length ? esc(a.supportedTests.join(", ")) : "Valida por codigo y descripcion OBR-4; sin lista fija."}</small>
         ${a.lastError || a.listenerError ? `<p style="color:#c92a2a">${esc(a.lastError || a.listenerError)}</p>` : ""}
       </div>`).join("");
-      el("orders").innerHTML = orders.map(o => `<tr>
-        <td>${esc(o.sampleId)}<br><small>${esc(o.source)} / ${esc(o.barcode)}</small></td>
-        <td>${esc(o.patientId)}<br><small>${esc(o.patientName)}</small></td>
-        <td>${esc(o.analyzerId)}<br><small>${esc((o.requestedTests || []).join(", "))}</small></td>
-        <td><span class="state ${esc(o.status)}">${esc(o.status)}</span></td>
-        <td>${esc(o.rackPosition || "-")}</td>
-        <td>${actionButtons(o)}</td>
+
+      const laboratoryOrders = orders.filter(o => o.deviceType !== "PACS");
+      el("orders").innerHTML = laboratoryOrders.map(o => `<tr>
+        <td>
+          <strong>${esc(o.orderId)}</strong><br>
+          <small>${esc(o.source)} / MSG ${esc(o.sourceMessageControlId || "-")}</small><br>
+          <small>PV1.2 ${esc(o.visitType || "-")} / Visita ${esc(o.visitNumber || "-")}</small>
+        </td>
+        <td>
+          ${esc(o.patientId)}<br>
+          <small>${esc(o.patientName)}</small>
+        </td>
+        <td>
+          <strong>${esc(o.procedureCode || o.panelCode || "-")}</strong><br>
+          <small>${esc(o.procedureName || o.panelName || "-")}</small><br>
+          <small>Prioridad ${esc(o.priority || "-")}</small>
+        </td>
+        <td>
+          <strong>${esc(o.sampleId || "-")}</strong><br>
+          <small>${esc(o.sampleCode || "-")} / ${esc(o.sampleName || "-")}</small><br>
+          <small>${esc(o.topographyCode || "-")} ${esc(o.topographyName || "")}</small>
+        </td>
+        <td>
+          <span class="state ${esc(o.status)}">${esc(o.status)}</span><br>
+          <small>${esc(o.requestedAt || "-")}</small>
+        </td>
+        <td>
+          ${actionButtons(o)}
+          ${o.clinicalInfo ? `<div class="hint">Clinica: ${esc(o.clinicalInfo)}</div>` : ""}
+          ${o.observations?.length ? `<div class="hint">Obs: ${esc(o.observations.join(" | "))}</div>` : ""}
+          ${Object.keys(o.customFields || {}).length ? `<details class="hint"><summary>Campos propios del equipo (${Object.keys(o.customFields).length})</summary>${Object.entries(o.customFields).map(([key,value]) => `<div><code>${esc(key)}</code>: ${esc(value)}</div>`).join("")}</details>` : ""}
+        </td>
       </tr>`).join("");
-      renderRack();
-      el("messages").innerHTML = messages.map(m => `<details class="card">
-        <summary>${esc(m.createdAt)} - ${esc(m.direction)} - ${esc(m.messageType)} - ACK ${esc(m.ackCode || "-")} - ${esc(m.destination)}</summary>
+
+      const pacsAnalyzer = analyzers.find(a => a.profile === "PACS");
+      el("pacsListenerState").textContent = pacsAnalyzer?.listenerActive ? `LISTENER ON ${pacsAnalyzer.listenerHost || ""}` : "LISTENER OFF";
+      el("pacsListenerState").className = `state ${pacsAnalyzer?.listenerActive ? "COMPLETED" : "ERROR"}`;
+      el("pacsStudies").innerHTML = pacsStudies.length
+        ? pacsStudies.map(pacsStudyCard).join("")
+        : `<div class="pacs-empty">Aun no hay estudios. Envia un ORM^O01 al puerto ${esc(pacsAnalyzer?.listenPort || 5020)}.</div>`;
+
+      const messageContainer = el("messages");
+      const messageScrollTop = messageContainer.scrollTop;
+      messageContainer.innerHTML = messages.map(m => `<details class="card" data-message-id="${esc(m.id)}" ${expandedMessageIds.has(m.id) ? "open" : ""} ontoggle="toggleMessageDetail(this)">
+        <summary>${esc(m.createdAt)} - ${esc(m.direction)} - ${esc(m.messageType)} - ACK ${esc(m.ackCode || "-")} - ${esc(m.destination)} ${(m.warnings || []).length ? `⚠ ${m.warnings.length}` : ""}</summary>
         <pre>${esc(m.rawMessage)}</pre>
         ${m.ackMessage ? `<pre>${esc(m.ackMessage)}</pre>` : ""}
+        ${(m.warnings || []).length ? `<div style="color:#8a5a00; background:#fff8db; border:1px solid #e8cf78; padding:8px; border-radius:6px"><strong>Advertencias del contrato (mensaje aceptado):</strong><ul>${m.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
         ${m.error ? `<p style="color:#c92a2a">${esc(m.error)}</p>` : ""}
       </details>`).join("");
+      messageContainer.scrollTop = messageScrollTop;
     }
-    el("analyzer").addEventListener("change", fillTests);
+
     refresh();
-    setInterval(refresh, 3000);
+    setInterval(refresh, 4000);
+    // --- HL7 Canvas Logic ---
+    let canvasSegments = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM", "OBX"];
+    let activePopupField = null;
+    let previewTimeout = null;
+    
+    function renderCanvas() {
+        const container = el("hl7Canvas");
+        if(!container) return;
+        container.innerHTML = "";
+        
+        const pathMap = {};
+        ["profilePatientId", "profilePatientName", "profileOrderId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
+            const paths = el(id).value.split(",").map(x => x.trim()).filter(Boolean);
+            paths.forEach(p => {
+                if (!pathMap[p]) pathMap[p] = [];
+                pathMap[p].push(id);
+            });
+        });
+        const fixedStr = el("profileFixedMapping").value;
+        let fixedMap = {};
+        try { fixedMap = JSON.parse(fixedStr || "{}"); } catch(e){}
+        for (const [k, v] of Object.entries(fixedMap)) {
+            if (!pathMap[k]) pathMap[k] = [];
+            pathMap[k].push(`FIXED:${v}`);
+        }
+
+        const getBadge = (basePath) => {
+            const matchedKeys = Object.keys(pathMap).filter(k => k === basePath || k.startsWith(basePath + "."));
+            const requiredKeys = (window.strictRequiredFields || []).filter(k => k === basePath || k.startsWith(basePath + "."));
+            if (matchedKeys.length === 0 && requiredKeys.length === 0) return "";
+            
+            const labels = [];
+            requiredKeys.forEach(k => {
+                const subExt = k.includes(".") ? `[.${k.split(".")[1]}] ` : "";
+                labels.push(`<div class="hl7-badge" style="background:#bc3d3d; border-color:#842222; margin-bottom:2px">🚨 REQ ${subExt}</div>`);
+            });
+            
+            matchedKeys.forEach(k => {
+                const subExt = k.includes(".") ? `[.${k.split(".")[1]}] ` : "";
+                pathMap[k].forEach(id => {
+                    if (id.startsWith("FIXED:")) {
+                        labels.push(`<div class="hl7-badge outbound" style="background:#607D8B; border-color:#455A64">📌 ${subExt}${id.substring(6)}</div>`);
+                        return;
+                    }
+                    let text = id.replace("profile", "");
+                    let type = id.includes("Result") || id.includes("MessageType") ? "outbound" : "inbound";
+                    labels.push(`<div class="hl7-badge ${type}">${subExt}${text}</div>`);
+                });
+            });
+            return labels.join("");
+        };
+
+        canvasSegments.forEach(seg => {
+            const row = document.createElement("div");
+            row.className = "hl7-segment";
+            let controls = "";
+            if (seg !== "MSH") {
+                controls = `<div class="seg-controls"><button onclick="moveSegmentUp('${seg}')" title="Subir">⬆️</button><button onclick="moveSegmentDown('${seg}')" title="Bajar">⬇️</button></div>`;
+            }
+            row.innerHTML = `<div class="seg-label">${controls}<span class="hl7-field" onclick="openCanvasPopup(event, '${seg}')">${seg}</span></div>`;
+            
+            let maxFields = seg === "MSH" ? 25 : 30;
+            let start = seg === "MSH" ? 2 : 1;
+            
+            for (let i = start; i <= maxFields; i++) {
+                const path = `${seg}-${i}`;
+                row.innerHTML += `<span class="hl7-pipe">|</span><span class="hl7-field" onclick="openCanvasPopup(event, '${path}')">${getBadge(path)}&nbsp;&nbsp;&nbsp;&nbsp;</span>`;
+            }
+            container.appendChild(row);
+        });
+    }
+
+    function moveSegmentUp(seg) {
+        const idx = canvasSegments.indexOf(seg);
+        if (idx > 1) {
+            const temp = canvasSegments[idx-1];
+            canvasSegments[idx-1] = canvasSegments[idx];
+            canvasSegments[idx] = temp;
+            renderCanvas();
+            triggerAutoPreview();
+        }
+    }
+
+    function moveSegmentDown(seg) {
+        const idx = canvasSegments.indexOf(seg);
+        if (idx > 0 && idx < canvasSegments.length - 1) {
+            const temp = canvasSegments[idx+1];
+            canvasSegments[idx+1] = canvasSegments[idx];
+            canvasSegments[idx] = temp;
+            renderCanvas();
+            triggerAutoPreview();
+        }
+    }
+
+    function openCanvasPopup(e, path) {
+        activePopupField = path;
+        el("popupFieldId").textContent = path;
+        const popup = el("canvasPopup");
+        popup.style.display = "block";
+        popup.style.left = Math.min(e.pageX - 110, window.innerWidth - 240) + "px";
+        popup.style.top = (e.pageY + 15) + "px";
+        
+        const select = el("popupVariableSelect");
+        const subInput = el("popupSubcomponent");
+        const fixInput = el("popupFixedValue");
+        select.value = "";
+        if(subInput) subInput.value = "";
+        if(fixInput) fixInput.value = "";
+        const fixedContainer = document.getElementById('popupFixedContainer');
+        if(fixedContainer) fixedContainer.style.display = 'none';
+
+        ["profilePatientId", "profilePatientName", "profileOrderId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
+            if(!el(id)) return;
+            let val = el(id).value.split(",").map(x=>x.trim());
+            const matched = val.find(v => v === path || v.startsWith(path + "."));
+            if (matched) {
+                select.value = id;
+                if (matched.includes(".") && subInput) subInput.value = matched.split(".")[1];
+            }
+        });
+        const fixedStr = el("profileFixedMapping").value;
+        let fixedMap = {};
+        try { fixedMap = JSON.parse(fixedStr || "{}"); } catch(e){}
+        const matchedFixed = Object.keys(fixedMap).find(k => k === path || k.startsWith(path + "."));
+        if (matchedFixed) {
+            select.value = "fixedValue";
+            if(fixInput) fixInput.value = fixedMap[matchedFixed];
+            if(fixedContainer) fixedContainer.style.display = 'flex';
+            if (matchedFixed.includes(".") && subInput) subInput.value = matchedFixed.split(".")[1];
+        }
+    }
+
+    function closeCanvasPopup() {
+        activePopupField = null;
+        el("canvasPopup").style.display = "none";
+    }
+
+    window.strictRequiredFields = [];
+    function openValidatorModal() {
+        el('validatorText').value = "";
+        el('validatorModal').style.display = 'block';
+    }
+    
+    window.currentSemanticTree = null;
+    window.savedInboundSchema = null;
+    window.savedOutboundSchema = null;
+    window.savedInboundRawHL7 = null;
+    window.savedOutboundRawHL7 = null;
+
+    function closeValidatorModal() {
+        el('validatorModal').style.display = 'none';
+        el('semanticTreeContainer').style.display = 'none';
+        el('btnAnalyzeSemantic').style.display = 'inline-block';
+        el('btnSaveInbound').style.display = 'none';
+        el('btnSaveOutbound').style.display = 'none';
+        el('validatorText').value = '';
+    }
+
+    async function generateSemanticTree() {
+        const text = el('validatorText').value.trim();
+        if (!text) return;
+        const analyzerId = el("profileAnalyzer").value;
+        if (!analyzerId) {
+            alert("Selecciona primero el analizador al que pertenecerá este contrato.");
+            return;
+        }
+        const button = el('btnAnalyzeSemantic');
+        button.disabled = true;
+        button.textContent = "Analizando…";
+        try {
+            const inferred = await post(`/api/analyzers/${analyzerId}/protocol-profiles/infer`, {rawMessage:text});
+            window.currentSemanticTree = inferred.schema;
+            el('semanticTreeCode').value = JSON.stringify(inferred.schema, null, 2);
+            el('semanticTreeContainer').style.display = 'block';
+            showAnalyzedContractPreview(inferred.schema, text, inferred.preview);
+            el('btnAnalyzeSemantic').style.display = 'none';
+            el('btnSaveInbound').style.display = 'inline-block';
+            el('btnSaveOutbound').style.display = 'inline-block';
+        } catch(error) {
+            alert(error.message);
+        } finally {
+            button.disabled = false;
+            button.textContent = "Analizar Muestra 🧠";
+        }
+    }
+
+    function refreshEditedContractPreview() {
+        try {
+            const schema = JSON.parse(el('semanticTreeCode').value);
+            showAnalyzedContractPreview(schema, el('validatorText').value);
+        } catch (_) {
+            el('inferredContractPreview').textContent = "El JSON aún no es válido.";
+        }
+    }
+
+    function showAnalyzedContractPreview(schema, rawMessage="", serverPreview="") {
+        const rendered = (rebuildHL7FromSchema(schema) || serverPreview || schema?.preview || "").replace(/\r/g, "\n");
+        el('inferredContractPreview').textContent = rendered || "No fue posible construir la vista previa.";
+        if (el('previewInboundBox')) {
+            const base = rawMessage ? "MENSAJE BASE\n" + rawMessage.replace(/\r/g,"\n") + "\n\n" : "";
+            el('previewInboundBox').textContent = "VISTA PREVIA (AÚN NO GUARDADA)\n\n" + base + "CONTRATO APLICADO\n" + rendered;
+        }
+    }
+    el('semanticTreeCode').addEventListener('input', refreshEditedContractPreview);
+
+    function saveSemanticTree(direction) {
+        let treeStr = el('semanticTreeCode').value;
+        try {
+            window.currentSemanticTree = JSON.parse(treeStr);
+        } catch(e) {
+            alert("El JSON tiene errores de sintaxis. Revisa y corrige antes de guardar.");
+            return;
+        }
+
+        if (!window.currentSemanticTree) return;
+        const inferredType = window.currentSemanticTree.messageType || "";
+        const inferredSegments = (window.currentSemanticTree.segments || []).map(item => item.name).filter(Boolean);
+        
+        if (direction === 'inbound') {
+            window.savedInboundSchema = window.currentSemanticTree;
+            // Guardar el HL7 crudo original que el usuario pegó
+            window.savedInboundRawHL7 = el('validatorText').value.trim() || null;
+            window.strictRequiredFields = requiredPathsFromContract(window.currentSemanticTree);
+            if (inferredType) el("profileInboundType").value = inferredType;
+            if (inferredSegments.length) canvasSegments = [...new Set(inferredSegments)];
+            applySuggestedInboundMappings(window.currentSemanticTree);
+            renderCanvas();
+            alert("Contrato Inbound guardado en memoria (" + el("profileInboundType").value + "). Haz clic en 'Guardar Perfil' para persistirlo.");
+        } else {
+            window.savedOutboundSchema = window.currentSemanticTree;
+            window.savedOutboundRawHL7 = el('validatorText').value.trim() || null;
+            if (inferredType) el("profileMessageType").value = inferredType;
+            
+            // Actualizar Lienzo con los segmentos del Outbound schema
+            const segOrder = ["MSH","EVN","PID","PV1","ORC","OBR","TXA","OBX","SPM"];
+            const allSegs = inferredSegments.length ? inferredSegments : Object.keys(window.currentSemanticTree);
+            const ordered = segOrder.filter(s => allSegs.includes(s)).concat(allSegs.filter(s => !segOrder.includes(s)));
+            
+            canvasSegments.length = 0;
+            ordered.forEach(s => canvasSegments.push(s));
+            
+            renderCanvas();
+            triggerAutoPreview();
+            
+            alert("Contrato Outbound aplicado al Lienzo (" + el("profileMessageType").value + "). Haz clic en 'Guardar Perfil' para persistirlo.");
+        }
+        closeValidatorModal();
+        updateSemanticBadges();
+    }
+
+    function contractHasField(schema, segmentName, fieldNumber) {
+        const segment = (schema.segments || []).find(item => item.name === segmentName);
+        return Boolean(segment?.fields?.[String(fieldNumber)]);
+    }
+
+    function requiredPathsFromContract(schema) {
+        if (!schema) return [];
+        if (schema.formatVersion !== 2) {
+            return Object.values(schema).flatMap(fields => Object.entries(fields || {}).filter(([,rule]) => rule.required).map(([path]) => path));
+        }
+        const paths = [];
+        for (const segment of schema.segments || []) {
+            for (const [fieldNumber, field] of Object.entries(segment.fields || {})) {
+                if (!field.required) continue;
+                let addedComponent = false;
+                for (const repetition of field.repetitions || []) {
+                    for (const componentNumber of Object.keys(repetition.components || {})) {
+                        if (field.composite) {
+                            paths.push(`${segment.name}-${fieldNumber}.${componentNumber}`);
+                            addedComponent = true;
+                        }
+                    }
+                }
+                if (!addedComponent) paths.push(`${segment.name}-${fieldNumber}`);
+            }
+        }
+        return [...new Set(paths)];
+    }
+
+    function applySuggestedInboundMappings(schema) {
+        if (!schema || schema.formatVersion !== 2) return;
+        if (contractHasField(schema, "PID", 3)) el("profilePatientId").value = "PID-3[1].1";
+        if (contractHasField(schema, "PID", 5)) el("profilePatientName").value = "PID-5";
+        if (contractHasField(schema, "ORC", 2)) el("profileOrderId").value = "ORC-2[1].1";
+        else if (contractHasField(schema, "OBR", 2)) el("profileOrderId").value = "OBR-2[1].1";
+        if (contractHasField(schema, "SPM", 2)) el("profileSampleId").value = "SPM-2[1].1";
+        else if (contractHasField(schema, "OBR", 3)) el("profileSampleId").value = "OBR-3[1].1";
+        if (contractHasField(schema, "OBR", 4)) {
+            el("profileTestCode").value = "OBR-4[1].1";
+            el("profileTestName").value = "OBR-4[1].2";
+        }
+    }
+    
+    function updateSemanticBadges() {
+        el('badgeInbound').style.display = window.savedInboundSchema ? 'inline-block' : 'none';
+        el('badgeOutbound').style.display = window.savedOutboundSchema ? 'inline-block' : 'none';
+        
+        if (el('previewInboundBox')) {
+            if (window.savedInboundSchema) {
+                const base = window.savedInboundRawHL7 ? "MENSAJE BASE\n" + window.savedInboundRawHL7.replace(/\r/g,"\n") + "\n\n" : "";
+                el('previewInboundBox').textContent = base + "CONTRATO APLICADO\n" + rebuildHL7FromSchema(window.savedInboundSchema).replace(/\r/g,"\n");
+            } else {
+                el('previewInboundBox').textContent = "(Sin contrato Inbound cargado.\n\nEl simulador operará en modo permisivo.\n\nPara imponer reglas, abre el Cerebro Semántico, analiza una muestra y dale a Guardar como Contrato Inbound.)";
+            }
+        }
+        if (el('profilePreview') && window.savedOutboundSchema) {
+            el('profilePreview').style.display = 'block';
+            el('profilePreview').textContent = buildOutboundPreviewText();
+        } else if (el('profilePreview') && !window.savedOutboundSchema) {
+            el('profilePreview').textContent = "(Sin contrato Outbound cargado.)";
+        }
+    }
+
+    function buildOutboundPreviewText(generatedMessage="") {
+        const sections = [];
+        if (window.savedOutboundRawHL7) {
+            sections.push("MENSAJE BASE OUTBOUND\n" + window.savedOutboundRawHL7.replace(/\r/g,"\n"));
+        }
+        if (window.savedOutboundSchema) {
+            sections.push("CONTRATO OUTBOUND APLICADO\n" + rebuildHL7FromSchema(window.savedOutboundSchema).replace(/\r/g,"\n"));
+        }
+        if (generatedMessage) {
+            sections.push("MENSAJE GENERADO CON DATOS DE PRUEBA\n" + generatedMessage.replace(/\r/g,"\n"));
+        }
+        return sections.join("\n\n") || "(Sin contrato Outbound cargado.)";
+    }
+
+    function rebuildHL7FromSchema(schema) {
+        if (schema?.formatVersion === 2) return rebuildStructuredHL7(schema);
+        // Reconstruye un esqueleto HL7 legible desde el schema JSON
+        const lines = [];
+        const segOrder = ["MSH","EVN","PID","PV1","ORC","OBR","TXA","OBX","SPM"];
+        const allSegs = Object.keys(schema);
+        const ordered = segOrder.filter(s => allSegs.includes(s)).concat(allSegs.filter(s => !segOrder.includes(s)));
+        
+        for (const segName of ordered) {
+            const fields = schema[segName];
+            // Encontrar el índice máximo de campo en este segmento
+            let maxIdx = 0;
+            for (const key of Object.keys(fields)) {
+                const match = key.match(/-(\d+)/);
+                if (match) maxIdx = Math.max(maxIdx, parseInt(match[1]));
+            }
+            const row = [segName];
+            for (let i = 1; i <= maxIdx; i++) {
+                // Buscar subcomponentes
+                const subs = Object.keys(fields).filter(k => k.startsWith(segName + "-" + i + "."));
+                const plain = fields[segName + "-" + i];
+                if (subs.length > 0) {
+                    let maxSub = 0;
+                    subs.forEach(s => { const m = s.match(/\.(\d+)$/); if(m) maxSub = Math.max(maxSub, parseInt(m[1])); });
+                    const parts = [];
+                    for (let j = 1; j <= maxSub; j++) {
+                        const sub = fields[segName + "-" + i + "." + j];
+                        parts.push(sub ? "<" + (sub.semantic || sub.type || "?") + ">" : "");
+                    }
+                    row.push(parts.join("^"));
+                } else if (plain) {
+                    let display = "<" + (plain.semantic || plain.type || "?") + ">";
+                    if (plain.allowed) display = plain.allowed.join("/");
+                    row.push(display);
+                } else {
+                    row.push("");
+                }
+            }
+            lines.push(row.join("|"));
+        }
+        return lines.join("\n");
+    }
+
+    function rebuildStructuredHL7(schema) {
+        const delimiters = schema.delimiters || {};
+        const fs = delimiters.field || "|", cs = delimiters.component || "^";
+        const rs = delimiters.repetition || "~", ss = delimiters.subcomponent || "&";
+        const placeholder = rule => {
+            if (!rule) return "";
+            if (Object.prototype.hasOwnProperty.call(rule, "const")) return String(rule.const);
+            const semantic = rule.semantic || rule.datatype || "VALOR";
+            if (rule.allowed?.length) return `<${semantic}:${rule.allowed.join("/")}>`;
+            const suffix = rule.datatype === "DT" ? ":YYYYMMDD" : (["TS","DTM"].includes(rule.datatype) ? ":YYYYMMDDHHMMSS" : "");
+            return `<${semantic}${suffix}>`;
+        };
+        const renderField = field => (field?.repetitions || []).map(rep => {
+            const components = rep.components || {};
+            const maxComponent = Math.max(0, ...Object.keys(components).map(Number));
+            const rendered = [];
+            for (let c=1; c<=maxComponent; c++) {
+                const component = components[String(c)];
+                if (!component) { rendered.push(""); continue; }
+                if (component.subcomponents) {
+                    const maxSub = Math.max(0, ...Object.keys(component.subcomponents).map(Number));
+                    const subs = [];
+                    for (let s=1; s<=maxSub; s++) subs.push(placeholder(component.subcomponents[String(s)]));
+                    rendered.push(subs.join(ss));
+                } else rendered.push(placeholder(component));
+            }
+            return rendered.join(cs);
+        }).join(rs);
+        return (schema.segments || []).map(segment => {
+            const fields = segment.fields || {};
+            const maxField = Math.max(segment.name === "MSH" ? 2 : 0, ...Object.keys(fields).map(Number));
+            const row = [segment.name];
+            if (segment.name === "MSH") row.push(cs + rs + (delimiters.escape || "\\") + ss);
+            const start = segment.name === "MSH" ? 3 : 1;
+            for (let f=start; f<=maxField; f++) row.push(renderField(fields[String(f)]));
+            return row.join(fs);
+        }).join("\r") + "\r";
+    }
+
+    function structuredSchemaToOutboundSegments(schema) {
+        const dynamicSource = (semantic, segmentName) => {
+            const common = {
+                SENDING_APPLICATION:{source:"analyzer.id"}, MESSAGE_DATETIME:{source:"system.timestamp"},
+                MESSAGE_CONTROL_ID:{source:"system.messageId"}, PATIENT_IDENTIFIER:{source:"patient.id"},
+                FAMILY_NAME:{source:"patient.name",transform:"component1"}, GIVEN_NAME:{source:"patient.name",transform:"component2"},
+                PLACER_ORDER_NUMBER:{source:"order.id"}, FILLER_ORDER_NUMBER:{source:"order.fillerId"},
+                SPECIMEN_IDENTIFIER:{source:"sample.id"}, TEST_CODE:{source:"test.code"}, TEST_NAME:{source:"test.name"},
+                SET_ID:{source:"counter"}, OBSERVATION_VALUE:{source:"result.value"}, UNITS:{source:"result.unit"},
+                REFERENCE_RANGE:{source:"result.referenceRange"}, ABNORMAL_FLAGS:{source:"result.abnormalFlag"}
+            };
+            if (segmentName === "OBX" && semantic === "OBSERVATION_IDENTIFIER") return {source:"result.code"};
+            if (segmentName === "OBX" && semantic === "OBSERVATION_TEXT") return {source:"result.name"};
+            return common[semantic] || null;
+        };
+        const fieldFromRule = (target, rule, segmentName) => {
+            if (Object.prototype.hasOwnProperty.call(rule, "const")) return {target,sourceType:"fixed",value:String(rule.const)};
+            if (rule.source) return {target,source:rule.source,required:!!rule.required,...(rule.transform ? {transform:rule.transform} : {}),...(rule.default !== undefined ? {default:rule.default} : {})};
+            if (rule.semantic === "OBSERVATION_TEXT") return {target,sourceType:"fixed",value:String(rule.example || "")};
+            const dynamic = dynamicSource(rule.semantic, segmentName);
+            if (dynamic) return {target,...dynamic,required:!!rule.required,...(rule.default !== undefined ? {default:rule.default} : {})};
+            return {target,sourceType:"fixed",value:String(rule.example || "")};
+        };
+        return (schema.segments || []).map(segment => {
+            const output = {name:segment.name,fields:[]};
+            if (segment.name === "OBX" && segment.max === "*") output.repeatBy = "results";
+            for (const [fieldNumber, field] of Object.entries(segment.fields || {})) {
+                if (segment.name === "MSH" && fieldNumber === "2") continue;
+                for (const repetition of field.repetitions || []) {
+                    const repIndex = repetition.index || 1;
+                    for (const [componentNumber, component] of Object.entries(repetition.components || {})) {
+                        if (component.subcomponents) {
+                            for (const [subNumber, rule] of Object.entries(component.subcomponents)) {
+                                const target = `${segment.name}-${fieldNumber}[${repIndex}].${componentNumber}.${subNumber}`;
+                                output.fields.push(fieldFromRule(target, rule, segment.name));
+                            }
+                        } else {
+                            let target = `${segment.name}-${fieldNumber}`;
+                            if ((field.maxRepetitions || 1) > 1) target += `[${repIndex}]`;
+                            if (field.composite) target += `.${componentNumber}`;
+                            output.fields.push(fieldFromRule(target, component, segment.name));
+                        }
+                    }
+                }
+            }
+            return output;
+        });
+    }
+
+
+    function updateSavedOutboundRule(path, source, fixedValue) {
+        const schema = window.savedOutboundSchema;
+        if (schema?.formatVersion !== 2) return;
+        const match = /^([A-Z0-9]{3})-(\d+)(?:\[(\d+)\])?(?:\.(\d+))?(?:\.(\d+))?$/.exec(path);
+        if (!match) return;
+        const [, name, fieldNumber, repetitionNumber, componentNumber, subNumber] = match;
+        let segment = schema.segments.find(s => s.name === name);
+        if (!segment) { segment = {name, min:1, max:1, fields:{}}; schema.segments.push(segment); }
+        const field = segment.fields[fieldNumber] ||= {required:true,minRepetitions:1,maxRepetitions:1,composite:false,repetitions:[]};
+        const repIndex = Number(repetitionNumber || 1);
+        let repetition = field.repetitions.find(r => (r.index || 1) === repIndex);
+        if (!repetition) { repetition = {index:repIndex,components:{}}; field.repetitions.push(repetition); }
+        field.maxRepetitions = Math.max(Number(field.maxRepetitions) || 1, repIndex);
+        if (!componentNumber && !subNumber) {
+            repetition.components = {};
+            const parts = source === "patient.name" ? ["component1", "component2"] : source ? [null] : String(fixedValue).split("^");
+            parts.forEach((part,index) => {
+                repetition.components[String(index+1)] = source
+                    ? {required:true,source,...(part ? {transform:part} : {})}
+                    : {required:true,const:part,example:part,datatype:"ST"};
+            });
+            field.composite = parts.length > 1;
+        } else {
+            field.composite = true;
+            let components = repetition.components;
+            let number = componentNumber || "1";
+            if (subNumber) {
+                const parent = components[number] ||= {required:true,subcomponents:{}};
+                components = parent.subcomponents ||= {};
+                number = subNumber;
+            }
+            components[number] = source ? {required:true,source} : {required:true,const:String(fixedValue),example:String(fixedValue),datatype:"ST"};
+        }
+    }
+
+    function applyCanvasPopup() {
+        if (!activePopupField) return;
+        const select = el("popupVariableSelect");
+        const chosenId = select.value;
+        
+        let targetPath = activePopupField;
+        const subInput = el("popupSubcomponent");
+        const subValue = subInput ? subInput.value : "";
+        if (subValue && subValue > 0) {
+            targetPath = activePopupField + "." + subValue;
+        }
+
+        ["profilePatientId", "profilePatientName", "profileOrderId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
+            if(!el(id)) return;
+            let paths = el(id).value.split(",").map(x => x.trim()).filter(Boolean);
+            paths = paths.filter(p => p !== activePopupField && !p.startsWith(activePopupField + "."));
+            el(id).value = paths.join(", ");
+        });
+        
+        const fixedStr = el("profileFixedMapping").value;
+        let fixedMap = {};
+        try { fixedMap = JSON.parse(fixedStr || "{}"); } catch(e){}
+        Object.keys(fixedMap).forEach(k => {
+            if (k === activePopupField || k.startsWith(activePopupField + ".")) delete fixedMap[k];
+        });
+        
+        if (chosenId && chosenId !== "fixedValue") {
+            let paths = el(chosenId).value.split(",").map(x => x.trim()).filter(Boolean);
+            if (!paths.includes(targetPath)) paths.push(targetPath);
+            el(chosenId).value = paths.join(", ");
+        } else if (chosenId === "fixedValue") {
+            fixedMap[targetPath] = el("popupFixedValue").value || "FIJO";
+        }
+        el("profileFixedMapping").value = JSON.stringify(fixedMap);
+        const sources = {profilePatientId:"patient.id",profilePatientName:"patient.name",profileOrderId:"order.id",
+            profileSampleId:"sample.id",profileTestCode:"test.code",profileTestName:"test.name",profileResultValue:"result.value",
+            profileResultCode:"result.code",profileResultUnit:"result.unit",profileResultDocument:"resultDocument.pdfBase64"};
+        if (chosenId === "fixedValue") updateSavedOutboundRule(targetPath, null, fixedMap[targetPath]);
+        else if (sources[chosenId]) updateSavedOutboundRule(targetPath, sources[chosenId]);
+
+        
+        closeCanvasPopup();
+        renderCanvas();
+        triggerAutoPreview();
+    }
+
+    function addCanvasSegment() {
+        const z = prompt("Ingresa el nombre del segmento (ej. NTE, TQ1, ZEQ)");
+        if (z && z.length === 3) {
+            const seg = z.toUpperCase();
+            if (!canvasSegments.includes(seg)) {
+                canvasSegments.push(seg);
+                renderCanvas();
+                triggerAutoPreview();
+            }
+        }
+    }
+
+    function loadCanvasTemplate(type) {
+        if (type === 'OML') {
+            el("profileInboundType").value = "OML^O21";
+            el("profileMessageType").value = "";
+            el("profilePatientId").value = "PID-3";
+            el("profileOrderId").value = "ORC-2,OBR-18";
+            el("profileSampleId").value = "SPM-2,OBR-3";
+            el("profileTestCode").value = "OBR-4.1";
+            el("profileTestName").value = "OBR-4.2";
+            el("profileResultValue").value = "";
+            el("profileResultUnit").value = "";
+            el("profileResultCode").value = "";
+            el("profileResultDocument").value = "";
+            el("profileResultObxType").value = "NM";
+            canvasSegments = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM"];
+        } else if (type === 'ORU_NUMERIC') {
+            el("profileMessageType").value = "ORU^R01";
+            el("profilePatientId").value = "PID-3";
+            el("profileOrderId").value = "ORC-2,OBR-18";
+            el("profileSampleId").value = "SPM-2,OBR-3";
+            el("profileResultValue").value = "OBX-5";
+            el("profileResultUnit").value = "OBX-6";
+            el("profileResultCode").value = "OBX-3.1";
+            el("profileResultDocument").value = "";
+            el("profileResultObxType").value = "NM";
+            canvasSegments = ["MSH", "PID", "ORC", "OBR", "OBX"];
+        } else if (type === 'ORU_PDF') {
+            el("profileMessageType").value = "ORU^R01";
+            el("profilePatientId").value = "PID-3";
+            el("profileOrderId").value = "ORC-2,OBR-18";
+            el("profileSampleId").value = "SPM-2,OBR-3";
+            el("profileResultValue").value = "";
+            el("profileResultUnit").value = "";
+            el("profileResultCode").value = "";
+            el("profileResultDocument").value = "OBX-5";
+            el("profileResultObxType").value = "ED";
+            canvasSegments = ["MSH", "PID", "ORC", "OBR", "OBX"];
+        }
+        renderCanvas();
+        triggerAutoPreview();
+    }
+
+    function resetCanvas() {
+        resetProtocolProfile();
+    }
+
+    function triggerAutoPreview() {
+        clearTimeout(previewTimeout);
+        previewTimeout = setTimeout(() => {
+            if(el("profileAnalyzer").value) {
+               previewProtocolProfile();
+            }
+        }, 600);
+    }
   </script>
 </body>
 </html>

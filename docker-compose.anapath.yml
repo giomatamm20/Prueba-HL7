@@ -1,0 +1,20 @@
+services:
+  anapath-simulator:
+    build:
+      context: ./services/analyzer-simulator-api
+    environment:
+      RESULT_DESTINATION_HOST: ${RESULT_DESTINATION_HOST:-host.docker.internal}
+      RESULT_DESTINATION_PORT: ${RESULT_DESTINATION_PORT:-9004}
+      ORDER_LISTENERS_ENABLED: ${ORDER_LISTENERS_ENABLED:-true}
+      SIMULATOR_DB_PATH: /app/data/anapath-simulator.db
+      SIMULATOR_ALLOWED_LISTEN_PORTS: ${SIMULATOR_ALLOWED_LISTEN_PORTS:-9500,5100-5119}
+      SIMULATOR_READ_TIMEOUT: ${SIMULATOR_READ_TIMEOUT:-30}
+    ports:
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${ANALYZER_SIMULATOR_PORT:-8090}:8090"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${ANAPATH_ORDER_PORT:-9500}:9500"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:5100-5119:5100-5119/tcp"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./services/analyzer-simulator-api/data:/app/data
+    restart: unless-stopped

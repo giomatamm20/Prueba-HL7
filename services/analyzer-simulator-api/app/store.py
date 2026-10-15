@@ -1,6 +1,8 @@
 import json
 import os
 import sqlite3
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -10,10 +12,18 @@ class SimulatorStore:
         default_path = Path(__file__).resolve().parents[1] / "data" / "simulator.db"
         self.database_path = Path(database_path or os.environ.get("SIMULATOR_DB_PATH", default_path))
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._local = threading.local()
         self.initialize()
 
     def initialize(self) -> None:
         with self._connect() as connection:
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS inbound_receipts (
+                    analyzer_id TEXT NOT NULL, protocol TEXT NOT NULL,
+                    identity TEXT NOT NULL, digest TEXT NOT NULL, ack TEXT NOT NULL,
+                    PRIMARY KEY(analyzer_id, protocol, identity)
+                )"""
+            )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS analyzers (
@@ -55,6 +65,21 @@ class SimulatorStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS analyzer_protocol_profiles (
+                    id TEXT PRIMARY KEY,
+                    analyzer_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(analyzer_id, name, version)
+                )
+                """
+            )
 
     def load_analyzers(self) -> dict[str, dict]:
         with self._connect() as connection:
@@ -76,6 +101,65 @@ class SimulatorStore:
     def delete_analyzer(self, analyzer_id: str) -> None:
         with self._connect() as connection:
             connection.execute("DELETE FROM analyzers WHERE id = ?", (analyzer_id,))
+
+    def list_protocol_profiles(self, analyzer_id: str) -> list[dict]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT payload, status FROM analyzer_protocol_profiles WHERE analyzer_id = ? ORDER BY name, version DESC",
+                (analyzer_id,),
+            ).fetchall()
+        profiles = []
+        for row in rows:
+            profile = json.loads(row[0])
+            # The table status is authoritative: prior versions are archived
+            # when another version becomes active.
+            profile["status"] = row[1]
+            profiles.append(profile)
+        return profiles
+
+    def save_protocol_profile(self, profile: dict) -> None:
+        with self._connect() as connection:
+            if profile["status"] == "ACTIVE":
+                connection.execute(
+                    "UPDATE analyzer_protocol_profiles SET status = 'ARCHIVED' WHERE analyzer_id = ? AND status = 'ACTIVE'",
+                    (profile["analyzerId"],),
+                )
+            connection.execute(
+                """
+                INSERT INTO analyzer_protocol_profiles
+                    (id, analyzer_id, name, version, status, payload, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    version = excluded.version,
+                    status = excluded.status,
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    profile["id"], profile["analyzerId"], profile["name"], profile["version"],
+                    profile["status"], self._json(profile), profile["createdAt"], profile["updatedAt"],
+                ),
+            )
+
+    def delete_protocol_profile(self, analyzer_id: str, profile_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE analyzer_protocol_profiles SET status = 'RETIRED' WHERE analyzer_id = ? AND id = ?",
+                (analyzer_id, profile_id),
+            )
+
+    def get_active_protocol_profile(self, analyzer_id: str) -> dict | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT payload FROM analyzer_protocol_profiles
+                WHERE analyzer_id = ? AND status = 'ACTIVE'
+                ORDER BY updated_at DESC LIMIT 1
+                """,
+                (analyzer_id,),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
 
     def load_orders(self) -> list[dict]:
         with self._connect() as connection:
@@ -106,6 +190,10 @@ class SimulatorStore:
                 ),
             )
 
+    def delete_orders_by_analyzer(self, analyzer_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM orders WHERE analyzer_id = ?", (analyzer_id,))
+
     def load_messages(self, limit: int = 250) -> list[dict]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -132,6 +220,10 @@ class SimulatorStore:
                 ),
             )
 
+    def delete_messages_by_analyzer(self, analyzer_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM messages WHERE analyzer_id = ?", (analyzer_id,))
+
     def next_sequence(self) -> int:
         with self._connect() as connection:
             row = connection.execute("SELECT value FROM meta WHERE key = 'sequence'").fetchone()
@@ -145,10 +237,49 @@ class SimulatorStore:
             )
         return value
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path)
-        connection.execute("PRAGMA journal_mode=WAL")
-        return connection
+    def get_receipt(self, analyzer_id: str, protocol: str, identity: str) -> tuple | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT digest, ack FROM inbound_receipts WHERE analyzer_id=? AND protocol=? AND identity=?",
+                (analyzer_id, protocol, identity),
+            ).fetchone()
+
+    def save_receipt(self, analyzer_id: str, protocol: str, identity: str, digest: str, ack: str) -> None:
+        with self._connect() as connection:
+            connection.execute("INSERT INTO inbound_receipts VALUES (?, ?, ?, ?, ?)",
+                               (analyzer_id, protocol, identity, digest, ack))
+
+    def clear_receipts(self, analyzer_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM inbound_receipts WHERE analyzer_id=?", (analyzer_id,))
+
+    @contextmanager
+    def transaction(self):
+        if getattr(self._local, "connection", None) is not None:
+            yield self._local.connection
+            return
+        connection = sqlite3.connect(self.database_path, timeout=10)
+        try:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("BEGIN IMMEDIATE")
+            self._local.connection = connection
+            yield connection
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            self._local.connection = None
+            connection.close()
+
+    @contextmanager
+    def _connect(self):
+        existing = getattr(self._local, "connection", None)
+        if existing is not None:
+            yield existing
+            return
+        with self.transaction() as connection:
+            yield connection
 
     def _json(self, value: Any) -> str:
         return json.dumps(value, ensure_ascii=True, separators=(",", ":"))

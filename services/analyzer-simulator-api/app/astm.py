@@ -1,4 +1,5 @@
 import socket
+import re
 from datetime import datetime, timezone
 
 
@@ -40,7 +41,7 @@ def build_astm_result(analyzer: dict, sample: dict, results: list[dict], sequenc
 
     framed_records = []
     for frame_number, record in enumerate(records, start=1):
-        body = f"{frame_number}{record}{CR}{ETX}"
+        body = f"{frame_number % 8}{record}{CR}{ETX}"
         framed_records.append(f"{STX}{body}{_checksum(body)}{CR}{LF}")
     return "".join(framed_records), control_id
 
@@ -48,15 +49,15 @@ def build_astm_result(analyzer: dict, sample: dict, results: list[dict], sequenc
 def send_astm_tcp(message: str, host: str, port: int, timeout: float = 8) -> tuple[str | None, str | None]:
     with socket.create_connection((host, port), timeout=5) as connection:
         connection.settimeout(timeout)
-        connection.sendall(message.encode("ascii", errors="replace"))
+        connection.sendall(message.encode("ascii", errors="strict"))
         try:
             response = connection.recv(4096)
         except TimeoutError:
             return None, "NO_RESPONSE"
     if not response:
         return None, "NO_RESPONSE"
-    decoded = response.decode("ascii", errors="replace")
-    return decoded, decoded[:40]
+    decoded = response.decode("ascii", errors="strict")
+    return decoded, "ACK" if response == b"\x06" else "NAK" if response == b"\x15" else "INVALID_RESPONSE"
 
 
 def parse_astm_order(raw_message: str) -> dict:
@@ -70,6 +71,10 @@ def parse_astm_order(raw_message: str) -> dict:
         raise ASTMOrderError("Missing ASTM P record")
     if not order:
         raise ASTMOrderError("Missing ASTM O record")
+    if not records or not records[0].startswith("H|") or not records[-1].startswith("L|"):
+        raise ASTMOrderError("ASTM message must begin with H and end with L")
+    if sum(record.startswith("O|") for record in records) != 1:
+        raise ASTMOrderError("This ASTM variant supports one order per transmission")
 
     patient_fields = patient.split("|")
     order_fields = order.split("|")
@@ -110,19 +115,39 @@ def _checksum(body: str) -> str:
 
 
 def _records(raw_message: str) -> list[str]:
-    normalized = raw_message.replace(STX, "").replace(ETX, "").replace(LF, CR)
-    records = []
-    for item in normalized.split(CR):
-        line = item.strip()
-        if not line:
-            continue
-        if line[0].isdigit() and len(line) > 1:
-            line = line[1:]
-        if len(line) > 2 and all(char in "0123456789ABCDEFabcdef" for char in line[-2:]):
-            line = line[:-2]
-        if "|" in line:
-            records.append(line)
+    try:
+        raw_message.encode("ascii", errors="strict")
+    except UnicodeError as error:
+        raise ASTMOrderError("This ASTM variant requires ASCII") from error
+    if STX in raw_message:
+        pattern = re.compile(r"\x02([0-7])([^\x02\x03]*)\r\x03([0-9A-Fa-f]{2})\r\n")
+        offset = 0
+        records = []
+        expected = 1
+        for match in pattern.finditer(raw_message):
+            if match.start() != offset:
+                raise ASTMOrderError("Malformed ASTM frame")
+            number, record, checksum = match.groups()
+            if int(number) != expected % 8:
+                raise ASTMOrderError("Invalid ASTM frame sequence")
+            if _checksum(number + record + CR + ETX) != checksum.upper():
+                raise ASTMOrderError("Invalid ASTM frame checksum")
+            records.extend(line for line in record.split(CR) if line)
+            expected += 1
+            offset = match.end()
+        if offset != len(raw_message) or not records:
+            raise ASTMOrderError("Incomplete ASTM frame")
+        return records
+    records = [line for line in raw_message.replace(LF, CR).split(CR) if line]
+    if any(not re.match(r"[HPORL]\|", line) for line in records):
+        raise ASTMOrderError("Unsupported ASTM record")
     return records
+
+
+def astm_message_complete(data: bytes) -> bool:
+    if data.startswith(b"\x02"):
+        return bool(re.search(rb"\x02[0-7]L\|[^\r]*\r\x03[0-9A-Fa-f]{2}\r\n$", data))
+    return bool(re.search(rb"(?:^|[\r\n])L\|[^\r\n]*[\r\n]$", data))
 
 
 def _first(records: list[str], prefix: str) -> str | None:

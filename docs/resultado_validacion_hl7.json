@@ -1,0 +1,529 @@
+{
+  "scope": "HL7 configurable: standby, ACK, manual processing, configured results, corrected-contract resend and published ports",
+  "timestampUtc": "2026-10-15T21:26:09.050460+00:00",
+  "python": "3.12.5",
+  "testsRun": 57,
+  "successful": true,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "hospitalServicesUsed": false,
+  "dockerDeploymentPerformed": false,
+  "tests": [
+    {
+      "test": "test_editor.EditorTests.test_visual_fixed_value_edit_changes_saved_contract_and_generated_message",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.266
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_accepts_cr_and_lf_segment_separators",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.0
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_ack_contains_detailed_err_segment",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.0
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_engine_persists_and_enforces_contract_for_its_analyzer",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.437
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_identifier_value_can_change_but_its_component_is_required",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.0
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_infers_repetitions_and_placeholder_preview",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.0
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_mapping_paths_select_repetitions_and_components",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.0
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_oru_profile_can_be_parsed_without_orc",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.0
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_profile_builder_writes_repetition_component_paths",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.0
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_proprietary_catalog_value_can_change_in_the_same_position",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.0
+    },
+    {
+      "test": "test_hl7_contract.HL7ContractTests.test_rejects_invalid_date_and_unexpected_segment",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.016
+    },
+    {
+      "test": "test_listeners_api.ApiConfigurationTests.test_device_stays_standby_until_both_contracts_are_complete",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 1.422
+    },
+    {
+      "test": "test_listeners_api.ApiConfigurationTests.test_manual_resend_uses_corrected_contract_without_restarting_listener",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.968
+    },
+    {
+      "test": "test_listeners_api.ApiConfigurationTests.test_new_hl7_device_uses_editor_definition_without_test_catalog_or_vendor_code",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.829
+    },
+    {
+      "test": "test_listeners_api.ApiConfigurationTests.test_pool_listing_and_health_status",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.64
+    },
+    {
+      "test": "test_listeners_api.ApiConfigurationTests.test_sparse_put_preserves_configuration",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.485
+    },
+    {
+      "test": "test_listeners_api.ListenerSocketTests.test_occupied_port_is_not_saved_and_old_listener_stays_active",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.5
+    },
+    {
+      "test": "test_listeners_api.ListenerSocketTests.test_port_change_preserves_other_device_and_reports_active_state",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 1.203
+    },
+    {
+      "test": "test_listeners_api.ListenerSocketTests.test_protocol_change_on_same_port_and_disable_listener",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.781
+    },
+    {
+      "test": "test_listeners_api.ListenerSocketTests.test_rename_and_destination_edit_keep_both_listeners_and_open_connection",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.891
+    },
+    {
+      "test": "test_listeners_api.ListenerSocketTests.test_reserved_duplicate_out_of_range_and_unpublished_ports",
+      "status": "PASS",
+      "subtests": [
+        {
+          "case": "_OrderedChainMap({'port': -1})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'port': 70000})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'port': 8090})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'port': 5100})",
+          "status": "PASS"
+        }
+      ],
+      "seconds": 0.265
+    },
+    {
+      "test": "test_pacs.PacsSimulatorTests.test_account_number_uses_first_pid_3_component_and_accepts_legacy_records",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.203
+    },
+    {
+      "test": "test_pacs.PacsSimulatorTests.test_decrypts_production_compatible_legacy_secure_link",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.219
+    },
+    {
+      "test": "test_pacs.PacsSimulatorTests.test_default_pacs_profile_receives_real_world_orm",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.266
+    },
+    {
+      "test": "test_pacs.PacsSimulatorTests.test_generates_image_and_notifies_mirth_with_ready_oru",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.515
+    },
+    {
+      "test": "test_pacs.PacsSimulatorTests.test_lookup_requires_matching_patient_and_accession",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.157
+    },
+    {
+      "test": "test_pacs.PacsSimulatorTests.test_rejects_duplicate_accession_number",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.234
+    },
+    {
+      "test": "test_pacs.PacsSimulatorTests.test_secure_link_rejects_invalid_ciphertext",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.156
+    },
+    {
+      "test": "test_pacs.PacsSimulatorTests.test_secure_link_rejects_wrong_code_and_parameter_order",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.156
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_anapath_events_and_report_statuses_preserve_correlation",
+      "status": "PASS",
+      "subtests": [
+        {
+          "case": "_OrderedChainMap({'reportStatus': 'F'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'reportStatus': 'C'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'reportStatus': 'X'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'event': 'STATUS_CHANGE'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'event': 'NEW_SAMPLE'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'event': 'DELETE_SAMPLE'})",
+          "status": "PASS"
+        }
+      ],
+      "seconds": 0.797
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_astm_framing_checksum_sequence_negative_ack_and_retransmission",
+      "status": "PASS",
+      "subtests": [
+        {
+          "case": "_OrderedChainMap({'expected': b'\\x06'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'expected': b'\\x06'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'expected': b'\\x15'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'expected': b'\\x15'})",
+          "status": "PASS"
+        }
+      ],
+      "seconds": 0.578
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_fragmented_pipelined_messages_and_simultaneous_connections",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.625
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_full_cycle_for_documented_device_templates",
+      "status": "PASS",
+      "subtests": [
+        {
+          "case": "_OrderedChainMap({'device': 'CELL_DYN_RUBY', 'protocol': 'HL7'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'device': 'SYSMEX_XN1000', 'protocol': 'HL7'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'device': 'ARCHITECT_CI4100', 'protocol': 'HL7'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'device': 'SYSMEX_UC3500', 'protocol': 'ASTM'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'device': 'GENERIC_HL7', 'protocol': 'HL7'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'device': 'GENERIC_ASTM', 'protocol': 'ASTM'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'device': 'ANAPATH', 'protocol': 'HL7'})",
+          "status": "PASS"
+        }
+      ],
+      "seconds": 4.188
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_lost_ack_retry_preserves_bytes_when_contract_has_not_changed",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.859
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_mllp_invalid_framing_encoding_size_timeout_and_disconnect",
+      "status": "PASS",
+      "subtests": [
+        {
+          "case": "_OrderedChainMap({'payload': b'unframed'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'payload': b'\\x0b\\xff\\x1c\\r'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'payload': b'\\x0bXXXXXXXXXXXXXXXXXXX'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'payload': b'\\x0bMSH|'})",
+          "status": "PASS"
+        }
+      ],
+      "seconds": 1.063
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_outbound_custom_separators_are_validated_and_acknowledged",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.562
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_pacs_lost_notification_ack_retries_identical_message_after_restart",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 1.266
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_pacs_real_socket_order_image_and_notification",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.578
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_strict_outbound_contract_is_checked_before_network_send",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.672
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_utf8_special_characters_and_outbound_delimiter_escaping",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.375
+    },
+    {
+      "test": "test_protocol_sockets.ProtocolSocketTests.test_wrong_ack_id_negative_ack_unframed_response_and_unavailable_destination",
+      "status": "PASS",
+      "subtests": [
+        {
+          "case": "_OrderedChainMap({'options': {'wrong_id': True}})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'options': {'malformed': True}})",
+          "status": "PASS"
+        }
+      ],
+      "seconds": 2.516
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_astm_idempotence_and_plain_code_ending_in_hex_letters",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.265
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_concurrent_identical_retransmission_and_restart",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.719
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_contract_does_not_disable_business_rules",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.5
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_explicit_update_and_cancel_preserve_identity_and_are_idempotent",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 1.25
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_interrupted_operations_recover_without_resending",
+      "status": "PASS",
+      "subtests": [
+        {
+          "case": "_OrderedChainMap({'state': 'PROCESSING'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'state': 'SENDING_RESULT'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'state': 'GENERATING_IMAGE'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'state': 'NOTIFYING_MIRTH'})",
+          "status": "PASS"
+        }
+      ],
+      "seconds": 1.25
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_invalid_profile_definitions_leave_active_revision_unchanged",
+      "status": "PASS",
+      "subtests": [
+        {
+          "case": "_OrderedChainMap({'definition': {'inbound': {'mappings': [{'target': 'patient.id', 'source': 'PID-0'}]}}})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'definition': {'inbound': {'schema': {'formatVersion': 2, 'segments': []}}}})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'definition': {'inbound': {'validationMode': 'IGNORE'}}})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'definition': {'outbound': {'events': {'RESULT_FINAL': {'messageType': 'ORU^R01', 'segments': []}}}}})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'definition': {'outbound': {'events': {'RESULT_FINAL': 7}}}})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'definition': {'outbound': {'events': {'RESULT_FINAL': {'segments': [{'name': 'PID'}]}}}}})",
+          "status": "PASS"
+        }
+      ],
+      "seconds": 0.328
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_malformed_hl7_and_invalid_separators_do_not_create_orders",
+      "status": "PASS",
+      "subtests": [
+        {
+          "case": "_OrderedChainMap({'raw': 'not HL7'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'raw': 'MSH|^^^^|HIS_TEST|LA'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'raw': 'MSH|^~\\\\&|HIS_TEST|LA'})",
+          "status": "PASS"
+        },
+        {
+          "case": "_OrderedChainMap({'raw': 'MSH|^~\\\\&|HIS_TEST|LA'})",
+          "status": "PASS"
+        }
+      ],
+      "seconds": 0.344
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_missing_required_outbound_mapping_and_undefined_event_are_controlled",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.156
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_negotiated_separators_and_three_component_message_type",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.234
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_new_message_ids_cannot_race_the_same_sample",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.563
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_order_update_requires_explicit_configuration",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.281
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_required_mapping_failure_returns_persisted_negative_ack",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.235
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_reused_message_id_with_changed_content_is_rejected",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.328
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_revision_history_isolated_and_pinned_to_original_order",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.484
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_strict_rejection_and_explicit_warning_mode",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.375
+    },
+    {
+      "test": "test_stabilization.StabilizationTests.test_transaction_failure_rolls_back_memory_order_and_receipt",
+      "status": "PASS",
+      "subtests": [],
+      "seconds": 0.359
+    }
+  ]
+}

@@ -1,0 +1,204 @@
+{
+  "generatedAt": "2026-10-15T16:45:45.006472+00:00",
+  "scope": "Compose configuration only; no containers started",
+  "containerBuildVerified": false,
+  "containerRuntimeVerified": false,
+  "checks": [
+    {
+      "files": [
+        "docker-compose.yml"
+      ],
+      "status": "PASS",
+      "listenerPorts": [
+        5001,
+        5002,
+        5003,
+        5004,
+        5010,
+        5011,
+        5020,
+        5100,
+        5101,
+        5102,
+        5103,
+        5104,
+        5105,
+        5106,
+        5107,
+        5108,
+        5109,
+        5110,
+        5111,
+        5112,
+        5113,
+        5114,
+        5115,
+        5116,
+        5117,
+        5118,
+        5119,
+        9500
+      ],
+      "publishedPorts": 29,
+      "overrides": {}
+    },
+    {
+      "files": [
+        "docker-compose.yml",
+        "docker-compose.port-pool.yml"
+      ],
+      "status": "PASS",
+      "listenerPorts": [
+        5001,
+        5002,
+        5003,
+        5004,
+        5010,
+        5011,
+        5020,
+        5100,
+        5101,
+        5102,
+        5103,
+        5104,
+        5105,
+        5106,
+        5107,
+        5108,
+        5109,
+        5110,
+        5111,
+        5112,
+        5113,
+        5114,
+        5115,
+        5116,
+        5117,
+        5118,
+        5119,
+        9500
+      ],
+      "publishedPorts": 29,
+      "overrides": {}
+    },
+    {
+      "files": [
+        "docker-compose.anapath.yml"
+      ],
+      "status": "PASS",
+      "listenerPorts": [
+        5100,
+        5101,
+        5102,
+        5103,
+        5104,
+        5105,
+        5106,
+        5107,
+        5108,
+        5109,
+        5110,
+        5111,
+        5112,
+        5113,
+        5114,
+        5115,
+        5116,
+        5117,
+        5118,
+        5119,
+        9500
+      ],
+      "publishedPorts": 22,
+      "overrides": {}
+    },
+    {
+      "files": [
+        "docker-compose.server.yml"
+      ],
+      "status": "PASS",
+      "listenerPorts": [
+        5001,
+        5002,
+        5003,
+        5004,
+        5010,
+        5011,
+        5020,
+        5100,
+        5101,
+        5102,
+        5103,
+        5104,
+        5105,
+        5106,
+        5107,
+        5108,
+        5109,
+        5110,
+        5111,
+        5112,
+        5113,
+        5114,
+        5115,
+        5116,
+        5117,
+        5118,
+        5119,
+        9500
+      ],
+      "publishedPorts": 29,
+      "overrides": {}
+    },
+    {
+      "files": [
+        "docker-compose.server.yml"
+      ],
+      "status": "PASS",
+      "listenerPorts": [
+        5001,
+        5002,
+        5003,
+        5004,
+        5010,
+        5011,
+        5020,
+        5100,
+        5101,
+        5102,
+        5103,
+        5104,
+        5105,
+        5106,
+        5107,
+        5108,
+        5109,
+        5110,
+        5111,
+        5112,
+        5113,
+        5114,
+        5115,
+        5116,
+        5117,
+        5118,
+        5119,
+        9500
+      ],
+      "publishedPorts": 29,
+      "overrides": {
+        "SIMULATOR_BIND_IP": "192.0.2.10",
+        "ANALYZER_SIMULATOR_PORT": "18090",
+        "SIMULATOR_DB_FILE": "anapath-simulator.db"
+      }
+    },
+    {
+      "case": "empty bind IP rejected",
+      "status": "PASS"
+    },
+    {
+      "case": "one uvicorn worker",
+      "status": "PASS"
+    }
+  ]
+}

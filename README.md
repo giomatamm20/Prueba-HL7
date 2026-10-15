@@ -1,5 +1,14 @@
 # HL7 Lab Integration Simulator
 
+La configuración de equipos HL7, puertos disponibles y contratos de entrada/salida
+se explica en [Configuración de equipos HL7](docs/CONFIGURACION_EQUIPOS_HL7.md).
+Un equipo permanece en STANDBY hasta completar su contrato; recibir una orden
+genera su ACK y deja el resultado pendiente del procesamiento y envío manual.
+
+Docker ya incluye el pool **5100–5119/TCP**. Para instalar solo el simulador en
+otro servidor, usar [la guía de despliegue](docs/DESPLIEGUE_SERVIDOR.md),
+`docker-compose.server.yml` y `.env.server.example`.
+
 Simulacion realista del flujo de laboratorio clinico:
 
 ```text
@@ -29,6 +38,7 @@ clinicos y muestra el flujo en un frontend simple.
 | Docker/local | `5004/tcp` | Listener ordenes ASTM UC-3500. |
 | Docker/local | `5010/tcp` | Listener ordenes HL7 generico. |
 | Docker/local | `5011/tcp` | Listener ordenes ASTM generico. |
+| Docker/local | `5020/tcp` | Listener `ORM^O01` del PACS simulado. |
 
 En este laboratorio la PC local es `192.168.1.101` y el servidor es
 `192.168.1.122`.
@@ -161,6 +171,13 @@ API principal:
 | `POST /api/analyzers/{id}/scan` | Cargar muestra escaneando barcode. |
 | `POST /api/orders/{id}/load` | Simular carga/escaneo de muestra. |
 | `POST /api/orders/{id}/process` | Procesar y enviar resultado. |
+| `GET /api/pacs/studies` | Worklist de estudios del PACS simulado. |
+| `POST /api/pacs/studies/{id}/process` | Generar imagen simulada. |
+| `POST /api/pacs/studies/{id}/notify` | Notificar `IMAGE_READY` a Mirth. |
+| `GET /api/pacs/studies/{id}/viewer` | Abrir el visor de prueba. |
+
+La guia completa del flujo PACS, configuracion de Mirth, estados y endpoints
+esta en [`docs/PACS_SIMULATOR.md`](docs/PACS_SIMULATOR.md).
 
 Puertos de ordenes HL7 hacia el simulador:
 

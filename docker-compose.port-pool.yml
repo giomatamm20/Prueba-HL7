@@ -1,0 +1,9 @@
+# Compatibility overlay for previous deployment commands.
+# docker-compose.yml now includes this pool by default; this file is redundant.
+# Compose merges identical port publications without duplicating them.
+services:
+  analyzer-simulator-api:
+    environment:
+      SIMULATOR_ALLOWED_LISTEN_PORTS: ${SIMULATOR_ALLOWED_LISTEN_PORTS:-5001-5004,5010-5011,5020,9500,5100-5119}
+    ports:
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:5100-5119:5100-5119/tcp"

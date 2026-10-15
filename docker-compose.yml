@@ -7,14 +7,35 @@ services:
       RESULT_DESTINATION_PORT: ${RESULT_DESTINATION_PORT:-2575}
       ORDER_LISTENERS_ENABLED: ${ORDER_LISTENERS_ENABLED:-true}
       SIMULATOR_DB_PATH: /app/data/simulator.db
+      SIMULATOR_ALLOWED_LISTEN_PORTS: ${SIMULATOR_ALLOWED_LISTEN_PORTS:-5001-5004,5010-5011,5020,9500,5100-5119}
+      SIMULATOR_READ_TIMEOUT: ${SIMULATOR_READ_TIMEOUT:-30}
+      SIMULATOR_MAX_MESSAGE_BYTES: ${SIMULATOR_MAX_MESSAGE_BYTES:-4194304}
+      SIMULATOR_MAX_CONNECTIONS: ${SIMULATOR_MAX_CONNECTIONS:-64}
+      PACS_ORDER_PORT: 5020
+      PACS_NOTIFICATION_HOST: ${PACS_NOTIFICATION_HOST:-host.docker.internal}
+      PACS_NOTIFICATION_PORT: ${PACS_NOTIFICATION_PORT:-2575}
+      PACS_LEGACY_KEY_CODE: ${PACS_LEGACY_KEY_CODE:-}
+      PACS_LEGACY_KEY: ${PACS_LEGACY_KEY:-}
+      PACS_LEGACY_IV_HEX: ${PACS_LEGACY_IV_HEX:-}
+      PACS_LEGACY_USERNAME: ${PACS_LEGACY_USERNAME:-}
     ports:
-      - "${ANALYZER_SIMULATOR_PORT:-8090}:8090"
-      - "${ABBOTT_RUBY_ORDER_PORT:-5001}:5001"
-      - "${SYSMEX_XN_ORDER_PORT:-5002}:5002"
-      - "${ARCHITECT_ORDER_PORT:-5003}:5003"
-      - "${SYSMEX_UC_ASTM_ORDER_PORT:-5004}:5004"
-      - "${GENERIC_HL7_ORDER_PORT:-5010}:5010"
-      - "${GENERIC_ASTM_ORDER_PORT:-5011}:5011"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${ANALYZER_SIMULATOR_PORT:-8090}:8090"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${ABBOTT_RUBY_ORDER_PORT:-5001}:5001"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${SYSMEX_XN_ORDER_PORT:-5002}:5002"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${ARCHITECT_ORDER_PORT:-5003}:5003"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${SYSMEX_UC_ASTM_ORDER_PORT:-5004}:5004"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${GENERIC_HL7_ORDER_PORT:-5010}:5010"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${GENERIC_ASTM_ORDER_PORT:-5011}:5011"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:9500:9500"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:${PACS_ORDER_PORT:-5020}:5020"
+      - "${SIMULATOR_BIND_IP:-0.0.0.0}:5100-5119:5100-5119/tcp"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; r=json.load(urllib.request.urlopen('http://127.0.0.1:8090/api/health',timeout=3)); raise SystemExit(r['status']!='ok')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     volumes:
       - ./services/analyzer-simulator-api/data:/app/data
     restart: unless-stopped

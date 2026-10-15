@@ -1,0 +1,84 @@
+[
+  {
+    "check": "fresh_database_seed",
+    "status": "ISSUE",
+    "evidence": [
+      "pacs-simulator"
+    ]
+  },
+  {
+    "check": "create_without_authentication",
+    "status": "ISSUE",
+    "evidence": 201
+  },
+  {
+    "check": "contract_isolation",
+    "status": "PASS",
+    "evidence": "audit-b has no active profile"
+  },
+  {
+    "check": "strict_contract_invalid_date",
+    "status": "ISSUE",
+    "evidence": "AA + warning; invalid date persisted"
+  },
+  {
+    "check": "replay_after_lost_ack",
+    "status": "ISSUE",
+    "evidence": "same message is rejected as duplicate with AE"
+  },
+  {
+    "check": "edit_profile_version",
+    "status": "ISSUE",
+    "evidence": "same id and version overwritten"
+  },
+  {
+    "check": "restart_persistence",
+    "status": "PASS",
+    "evidence": "analyzer + edited active profile + order + messages recovered"
+  },
+  {
+    "check": "sparse_put_defaults",
+    "status": "ISSUE",
+    "evidence": {
+      "listenPort": 0,
+      "mode": "MANUAL",
+      "resultDestinationHost": "localhost",
+      "resultDestinationPort": 2575
+    }
+  },
+  {
+    "check": "port_validation",
+    "status": "ISSUE",
+    "evidence": "negative, >65535, API port and duplicate accepted with 201"
+  },
+  {
+    "check": "missing_required_mapping_ack",
+    "status": "ISSUE",
+    "evidence": "uncaught ValueError: Profile requires patient.id; no HL7 ACK returned"
+  },
+  {
+    "check": "outbound_schema_enforcement",
+    "status": "ISSUE",
+    "evidence": "writer emits message that violates supplied outbound schema"
+  },
+  {
+    "check": "inbound_only_profile_send",
+    "status": "ISSUE",
+    "evidence": "Profile None does not define outbound event RESULT_FINAL"
+  },
+  {
+    "check": "concurrent_duplicate_orders",
+    "status": "ISSUE",
+    "evidence": "two simultaneous copies persist two orders and return AA"
+  },
+  {
+    "check": "configuration_response_listener_status",
+    "status": "ISSUE",
+    "evidence": "PUT returns inactive although restarted listener is active; GET required"
+  },
+  {
+    "check": "runtime_listener_update_and_mllp",
+    "status": "PASS",
+    "evidence": "PUT starts listener; real loopback TCP message receives framed AA"
+  }
+]
