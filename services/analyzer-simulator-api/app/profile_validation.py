@@ -7,7 +7,7 @@ from .hl7_orders import extract_metadata
 from .profile_parser import validate_strict_profile
 
 PATH = re.compile(r"([A-Z0-9]{3})-([1-9]\d*)(?:\[([1-9]\d*)\])?(?:\.([1-9]\d*))?(?:\.([1-9]\d*))?")
-SOURCES = {"analyzer", "patient", "order", "sample", "test", "resultDocument", "system", "result", "counter", "customFields", "inbound"}
+SOURCES = {"analyzer", "patient", "order", "sample", "test", "study", "resultDocument", "system", "result", "counter", "customFields", "inbound"}
 
 
 def profile_ready(profile: dict | None) -> bool:
@@ -131,11 +131,21 @@ def _validate_profile(payload: dict) -> dict:
         if not config.get("messageType"):
             raise ValueError(f"Event {event} requires messageType")
         validate_schema(config.get("schema") or {})
-        for segment in segments:
+        def all_segments(items, depth=0):
+            if depth > 6 or not isinstance(items, list):
+                raise ValueError("Invalid outbound child segments")
+            for item in items:
+                if not isinstance(item, dict):
+                    raise ValueError("Invalid outbound segment")
+                yield item
+                yield from all_segments(item.get("children", []), depth + 1)
+        for segment in all_segments(segments):
             if not isinstance(segment, dict) or not re.fullmatch(r"[A-Z0-9]{3}", str(segment.get("name", ""))):
                 raise ValueError("Invalid outbound segment")
-            if segment.get("repeatBy") not in {None, "results"}:
+            if segment.get("repeatBy") not in {None, "results", "studies"}:
                 raise ValueError("Unsupported repeatBy")
+            if segment.get("requiredWhen") not in {None, "hasResults", "hasNote"}:
+                raise ValueError("Unsupported requiredWhen")
             for field in segment.get("fields") or []:
                 path = field.get("target", "")
                 if not valid_path(path) or not path.startswith(segment["name"] + "-") or path == "MSH-1":

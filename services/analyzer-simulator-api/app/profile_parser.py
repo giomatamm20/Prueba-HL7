@@ -48,12 +48,40 @@ def parse_with_profile(raw_message: str, inbound: dict) -> dict:
             elif canonical == "procedureCode":
                 base["procedureCode"] = value
                 base["panelCode"] = value
-                base["requestedTests"] = [value]
             elif canonical == "procedureName":
                 base["panelName"] = value
         else:
             custom_fields[target] = value
     base["customFields"] = custom_fields
+    for study in base.get("studies", []):
+        rows = [row for row in (study.get("orc"), study.get("obr")) if row]
+        specimen = study.get("sample", {}).get("raw")
+        if specimen:
+            rows.append(specimen)
+        from .hl7_orders import segments_from_message
+        header = segments_from_message(raw_message)[0]
+        scoped_message = "\r".join("|".join(row) for row in [header, *rows]) + "\r"
+        for mapping in inbound.get("mappings") or []:
+            target = mapping.get("target")
+            if target not in {"test.code", "test.name", "sample.id", "sample.code", "sample.name", "order.id", "order.fillerId"}:
+                continue
+            paths = [mapping.get("source", ""), *(mapping.get("alternatives") or [])]
+            value = next((v for path in paths if (v := hl7_path_value(scoped_message, path))), None)
+            if value is None:
+                if mapping.get("required"):
+                    raise ValueError(f"Profile requires {target} in {study['key']}")
+                continue
+            if target.startswith("test."):
+                study[target[5:]] = value
+            elif target.startswith("sample."):
+                study["sample"][target[7:]] = value
+                if target == "sample.id":
+                    study["sampleId"] = value
+            else:
+                study["orderId" if target == "order.id" else "fillerOrderId"] = value
+    if base.get("studies"):
+        base["requestedTests"] = [study["code"] for study in base["studies"]]
+        base["sampleId"] = base["barcode"] = base["studies"][0]["sampleId"]
     return base
 
 def validate_strict_profile(raw_message: str, schema: dict) -> None:

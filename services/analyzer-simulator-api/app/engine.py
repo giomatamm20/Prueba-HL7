@@ -14,7 +14,7 @@ from enum import StrEnum
 
 from .astm import ASTMOrderError, build_astm_result, parse_astm_order, send_astm_tcp
 from .behavior import normalize_behavior, validate_hl7_behavior
-from .catalog import TEST_PROFILES
+from .study_catalog import bind_studies, dynamic_outbound, generate_results, seed_catalog, validate_catalog
 from .hl7_orders import HL7OrderError, build_ack, extract_metadata, parse_order, validate_anapath_order
 from .hl7_contract import hl7_contract_issues, infer_hl7_contract
 from .protocols import build_anapath_event, build_hl7_oru, send_mllp
@@ -96,6 +96,9 @@ class SimulationEngine:
     def __init__(self) -> None:
         self.lock = threading.RLock()
         self.store = SimulatorStore()
+        if not self.store.list_catalogs():
+            self.store.save_catalog({**validate_catalog(seed_catalog()), "id": "builtin-v1", "catalogId": "builtin",
+                                     "version": 1, "createdAt": self._now()})
         self.analyzers = self.store.load_analyzers()
         for analyzer in self.analyzers.values():
             analyzer.setdefault("behaviorConfigured", analyzer.get("behavior") != normalize_behavior({}, analyzer.get("protocol")))
@@ -172,6 +175,103 @@ class SimulationEngine:
     def list_analyzers(self) -> list[dict]:
         with self.lock:
             return [{**item, "contractReady": self.communication_ready(item)} for item in self.analyzers.values()]
+
+    def catalog_revision(self, revision_id):
+        revision = next((r for r in self.store.list_catalogs() if r["id"] == revision_id), None)
+        if revision is None:
+            raise ValueError("Revisión de catálogo inexistente")
+        return revision
+
+    def save_catalog(self, payload, catalog_id=None):
+        definition = validate_catalog(payload)
+        with self._atomic():
+            existing = [r for r in self.store.list_catalogs() if r["catalogId"] == catalog_id]
+            if catalog_id and not existing:
+                raise ValueError("Catálogo inexistente")
+            revision = {**definition, "id": str(uuid.uuid4()), "catalogId": catalog_id or str(uuid.uuid4()),
+                        "version": max((r["version"] for r in existing), default=0) + 1, "createdAt": self._now()}
+            self.store.save_catalog(revision)
+            return revision
+
+    def assign_catalog(self, analyzer_id, revision_id, policy="BLOCK", template=None, configure_outbound=False):
+        with self._atomic():
+            analyzer = self.analyzers.get(analyzer_id)
+            if not analyzer or analyzer.get("profile") in {"PACS", "ANAPATH"} or analyzer["protocol"] != "HL7":
+                raise ValueError("Seleccione un analizador HL7 de laboratorio")
+            revision = self.catalog_revision(revision_id)
+            bind_studies(revision, [], policy, template)
+            analyzer.update(catalogRevisionId=revision_id, unknownStudyPolicy=policy, genericStudyCode=template,
+                            supportedTests=[alias for study in revision["studies"] for alias in [study["code"], *study.get("aliases", [])]])
+            if configure_outbound:
+                active = self.store.get_active_protocol_profile(analyzer_id)
+                if not active:
+                    raise ValueError("Configure primero el contrato HL7 de entrada en el Diseñador HL7")
+                self._save_protocol_profile(analyzer_id, {"name": active["name"] + " / estudios dinámicos",
+                    "inbound": active["inbound"], "outbound": {**dynamic_outbound()}, "activate": True})
+            analyzer["updatedAt"] = self._now()
+            self.store.save_analyzer(analyzer)
+            return dict(analyzer)
+
+    def _bind_order_catalog(self, order, analyzer):
+        if analyzer.get("profile") in {"PACS", "ANAPATH"} or analyzer.get("protocol") != "HL7":
+            return
+        revision = self.catalog_revision(analyzer.get("catalogRevisionId") or "builtin-v1")
+        groups = order.get("studies") or [
+            {"key": f"study-{index}", "code": code, "name": "", "orderId": order.get("orderId"),
+             "sampleId": order["sampleId"], "sample": {"id": order["sampleId"], "code": order.get("sampleCode"), "name": order.get("sampleName")}}
+            for index, code in enumerate(order["requestedTests"], 1)]
+        policy = analyzer.get("unknownStudyPolicy") or ("BLOCK" if analyzer.get("catalogRevisionId") else "TEMPLATE")
+        order["studies"] = bind_studies(revision, groups, policy, analyzer.get("genericStudyCode") or "GENERIC")
+        order["catalogRevisionId"] = revision["id"]
+        order["catalogVersion"] = revision["version"]
+        order["catalogFallbacks"] = [{"studyKey": s["key"], "code": s["code"], "templateCode": s["templateCode"]}
+                                    for s in order["studies"] if s["fallbackUsed"]]
+
+    def regenerate_results(self, order_id, scenario="NORMAL"):
+        with self._atomic():
+            order = self._find_order(order_id)
+            if not order.get("studies") or not order["studies"][0].get("definition"):
+                raise ValueError("La orden no tiene definiciones de catálogo")
+            if order["status"] not in {"RESULT_READY", "COMPLETED", "ERROR"} or not order.get("results"):
+                raise ValueError("Procese primero la orden antes de regenerar")
+            if order.get("pendingOutbound", {}).get("inFlight"):
+                raise ValueError("Envío en curso")
+            self._generate_order_results(order, scenario)
+            order.pop("pendingOutbound", None)
+            order["status"] = "RESULT_READY"
+            order["updatedAt"] = self._now()
+            self._set_state(order["analyzerId"], AnalyzerState.RESULT_READY, current_sample=order["sampleId"])
+            self.store.save_analyzer(self.analyzers[order["analyzerId"]])
+            self.store.save_order(order)
+            return dict(order)
+
+    def _generate_order_results(self, order, scenario):
+        available = {"NORMAL", *[name for study in order["studies"] for name in study["definition"].get("scenarios", {})]}
+        if scenario not in available:
+            raise ValueError(f"Escenario no definido en el catálogo: {scenario}")
+        previous = order.get("results")
+        if previous:
+            order.setdefault("resultHistory", []).append({"generation": order.get("generation", 1),
+                "scenario": order.get("resultScenario"), "results": copy.deepcopy(previous), "archivedAt": self._now()})
+        order["results"] = generate_results(order["studies"], scenario, self.store.next_generator_sequence)
+        order["generation"] = order.get("generation", 0) + 1
+        order["resultScenario"] = scenario
+
+    def preview_order_results(self, order_id):
+        with self.lock:
+            order = self._find_order(order_id)
+            if not order.get("results"):
+                raise ValueError("Procese la orden para previsualizar los resultados")
+            analyzer = self.analyzers[order["analyzerId"]]
+            active = self.store.get_active_protocol_profile(analyzer["id"])
+            if (active or {}).get("outbound", {}).get("events"):
+                message, control_id = build_profile_message(active, analyzer, order, order["results"], "RESULT_FINAL", 0)
+            else:
+                message, control_id = build_hl7_oru(analyzer, order, order["results"], 0)
+                message = declare_utf8(message)
+            validate_outbound(message, active, "RESULT_FINAL", control_id)
+            return {"results": order["results"], "studies": order.get("studies", []), "message": message,
+                    "catalogRevisionId": order.get("catalogRevisionId"), "generation": order.get("generation")}
 
     def list_orders(self) -> list[dict]:
         with self.lock:
@@ -283,6 +383,7 @@ class SimulationEngine:
     def preview_protocol_profile(self, analyzer_id: str, payload: dict) -> dict:
         if analyzer_id not in self.analyzers:
             raise ValueError("Unknown analyzer")
+        payload = validate_profile(payload)
         sample = {
             "sourceRawMessage": (payload.get("inbound") or {}).get("rawHL7"),
             "patientId": "P-TEST-001", "patientName": "PACIENTE^PRUEBA",
@@ -292,6 +393,12 @@ class SimulationEngine:
             "procedureName": "PRUEBA SIMULADA", "orderStatus": "CM",
         }
         results = [{"code": "TEST-001", "name": "Prueba simulada", "value": 3.97, "unit": "g/dL", "referenceRange": "3.5 - 5.0", "abnormalFlag": "N"}]
+        segments = ((payload.get("outbound") or {}).get("events", {}).get("RESULT_FINAL") or {}).get("segments", [])
+        if any(s.get("repeatBy") == "studies" for s in segments):
+            revision = self.catalog_revision(self.analyzers[analyzer_id].get("catalogRevisionId") or "builtin-v1")
+            sample["studies"] = bind_studies(revision, [{"key": str(i), "code": s["code"], "name": s["name"],
+                "orderId": sample["orderId"], "sampleId": sample["sampleId"]} for i, s in enumerate(revision["studies"])])
+            results = generate_results(sample["studies"])
         message, control_id = build_profile_message(payload, self.analyzers[analyzer_id], sample, results, "RESULT_FINAL", self.store.next_sequence())
         return {"message": message, "controlId": control_id}
 
@@ -316,7 +423,7 @@ class SimulationEngine:
             raise ValueError("Unknown analyzer")
         if analyzer["mode"] != AnalyzerMode.MANUAL:
             raise ValueError("Manual sample creation is disabled while analyzer is in BIDIRECTIONAL mode")
-        if analyzer.get("profile") != "ANAPATH":
+        if analyzer.get("profile") != "ANAPATH" and not analyzer.get("catalogRevisionId"):
             unsupported = [test for test in payload["tests"] if test not in analyzer["supportedTests"]]
             if unsupported:
                 raise ValueError("Unsupported tests for analyzer: " + ", ".join(unsupported))
@@ -358,6 +465,7 @@ class SimulationEngine:
             "results": [],
         }
         with self._atomic():
+            self._bind_order_catalog(order, analyzer)
             self.orders.append(order)
             self._set_state(payload["analyzerId"], AnalyzerState.WAITING_SAMPLE)
             self.store.save_order(order)
@@ -439,7 +547,7 @@ class SimulationEngine:
 
             if analyzer.get("profile") == "ANAPATH":
                 validate_anapath_order(order_payload)
-            elif analyzer.get("profile") != "PACS":
+            elif analyzer.get("profile") != "PACS" and not analyzer.get("catalogRevisionId"):
                 unsupported = [
                     test
                     for test in order_payload["requestedTests"]
@@ -462,6 +570,7 @@ class SimulationEngine:
                 if existing["barcode"] != order_payload["barcode"] or existing["patientId"] != order_payload["patientId"]:
                     raise HL7OrderError("Order update cannot change sample or patient identity")
                 replacement = self._order_from_payload(order_payload, analyzer_id, "BIDIRECTIONAL")
+                self._bind_order_catalog(replacement, analyzer)
                 replacement["sourceRawMessage"] = raw_message
                 replacement.update({key: existing[key] for key in ("id", "status", "createdAt", "rackPosition")})
                 if active_profile:
@@ -485,6 +594,7 @@ class SimulationEngine:
                 raise HL7OrderError("muestra duplicada")
 
             order = self._order_from_payload(order_payload, analyzer_id, "BIDIRECTIONAL")
+            self._bind_order_catalog(order, analyzer)
             order["sourceRawMessage"] = raw_message
             if active_profile:
                 order["inboundProfileId"] = active_profile["id"]
@@ -734,7 +844,7 @@ class SimulationEngine:
             self.store.save_analyzer(current)
             return dict(current)
 
-    def process_order(self, order_id: str, send_result: bool = True) -> dict:
+    def process_order(self, order_id: str, send_result: bool = True, result_scenario: str | None = None) -> dict:
         with self.lock:
             candidate = self._find_order(order_id)
             self._ensure_operational(candidate["analyzerId"])
@@ -751,6 +861,10 @@ class SimulationEngine:
             self._ensure_operational(order["analyzerId"])
             if order["status"] != "SAMPLE_LOADED":
                 raise ValueError("Order is not ready to process")
+            if result_scenario is not None and order.get("studies"):
+                allowed = {"NORMAL", *[name for study in order["studies"] for name in study["definition"].get("scenarios", {})]}
+                if result_scenario not in allowed:
+                    raise ValueError(f"Escenario no definido: {result_scenario}")
             order["status"] = "PROCESSING"
             order["updatedAt"] = self._now()
             self._set_state(order["analyzerId"], AnalyzerState.PROCESSING, current_sample=order["sampleId"])
@@ -762,7 +876,10 @@ class SimulationEngine:
         with self._atomic():
             order = self._find_order(order_id)
             force_critical = self.analyzers[order["analyzerId"]].get("scenario") == "FORCE_CRITICAL"
-            order["results"] = self._generate_results(order["requestedTests"], force_critical=force_critical)
+            if order.get("studies") and order["studies"][0].get("definition"):
+                self._generate_order_results(order, result_scenario or "NORMAL")
+            else:
+                order["results"] = self._generate_results(order["requestedTests"], force_critical=force_critical)
             order["status"] = "RESULT_READY"
             order["updatedAt"] = self._now()
             self._set_state(order["analyzerId"], AnalyzerState.RESULT_READY, current_sample=order["sampleId"])
@@ -1190,6 +1307,9 @@ class SimulationEngine:
             "supportedTests": supported_tests,
             "profile": profile,
             "behavior": behavior,
+            "catalogRevisionId": payload.get("catalogRevisionId") or base.get("catalogRevisionId"),
+            "unknownStudyPolicy": payload.get("unknownStudyPolicy") or base.get("unknownStudyPolicy"),
+            "genericStudyCode": payload.get("genericStudyCode") or base.get("genericStudyCode"),
             "behaviorConfigured": payload.get("behaviorConfigured", bool(payload.get("behavior"))),
             "mode": mode,
             "state": payload.get("state") or base.get("state") or AnalyzerState.IDLE.value,
@@ -1280,37 +1400,9 @@ class SimulationEngine:
         return ack_text or None
 
     def _generate_results(self, requested_tests: list[str], force_critical: bool = False) -> list[dict]:
-        expanded = []
-        for test in requested_tests:
-            if test == "CBC":
-                expanded.extend(["WBC", "RBC", "HGB", "HCT", "MCV", "MCH", "MCHC", "PLT"])
-            else:
-                expanded.append(test)
-        return [self._generate_result(test, force_critical=force_critical) for test in dict.fromkeys(expanded)]
-
-    def _generate_result(self, code: str, force_critical: bool = False) -> dict:
-        profile = TEST_PROFILES.get(code, {"unit": "", "low": 1, "high": 10, "decimals": 1})
-        low = float(profile["low"])
-        high = float(profile["high"])
-        if code in {"NIT"}:
-            value = random.choice(["NEG", "NEG", "POS"])
-            flag = "A" if value == "POS" else "N"
-        else:
-            critical = force_critical or random.random() < 0.08
-            if critical:
-                value_number = random.choice([low * 0.65, high * 1.35])
-            else:
-                value_number = random.uniform(low, high)
-            value = round(value_number, int(profile["decimals"]))
-            flag = "L" if value_number < low else "H" if value_number > high else "N"
-        reference = f"{profile['low']}-{profile['high']}"
-        return {
-            "code": code,
-            "value": value,
-            "unit": profile["unit"],
-            "referenceRange": reference,
-            "abnormalFlag": flag,
-        }
+        revision = self.catalog_revision("builtin-v1")
+        groups = [{"key": str(i), "code": code} for i, code in enumerate(requested_tests)]
+        return generate_results(bind_studies(revision, groups, "TEMPLATE", "GENERIC"))
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
@@ -1392,6 +1484,7 @@ class SimulationEngine:
             "priority": payload["priority"],
             "analyzerId": analyzer_id,
             "requestedTests": payload["requestedTests"],
+            "studies": copy.deepcopy(payload.get("studies") or []),
             "panelCode": payload.get("panelCode"),
             "panelName": payload.get("panelName"),
             "procedureCode": payload.get("procedureCode"),

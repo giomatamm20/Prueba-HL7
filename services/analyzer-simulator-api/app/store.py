@@ -17,6 +17,9 @@ class SimulatorStore:
 
     def initialize(self) -> None:
         with self._connect() as connection:
+            connection.execute("""CREATE TABLE IF NOT EXISTS study_catalog_revisions (
+                id TEXT PRIMARY KEY, catalog_id TEXT NOT NULL, version INTEGER NOT NULL,
+                payload TEXT NOT NULL, UNIQUE(catalog_id, version))""")
             connection.execute(
                 """CREATE TABLE IF NOT EXISTS inbound_receipts (
                     analyzer_id TEXT NOT NULL, protocol TEXT NOT NULL,
@@ -80,6 +83,24 @@ class SimulatorStore:
                 )
                 """
             )
+
+    def list_catalogs(self) -> list[dict]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT payload FROM study_catalog_revisions ORDER BY catalog_id, version DESC").fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def save_catalog(self, revision: dict) -> None:
+        with self._connect() as connection:
+            connection.execute("INSERT INTO study_catalog_revisions VALUES (?, ?, ?, ?)",
+                               (revision["id"], revision["catalogId"], revision["version"], self._json(revision)))
+
+    def next_generator_sequence(self, key: str) -> int:
+        with self._connect() as connection:
+            row = connection.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+            value = int(row[0]) + 1 if row else 0
+            connection.execute("INSERT INTO meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                               (key, str(value)))
+        return value
 
     def load_analyzers(self) -> dict[str, dict]:
         with self._connect() as connection:

@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from .engine import SimulationEngine
 from .listeners import ListenerManager
 from .configuration import port_set
+from .study_catalog import bind_studies, dynamic_outbound, generate_results, infer_studies, validate_catalog
+from .profile_builder import build_profile_message
 from .pacs import (
     PacsSecureLinkError,
     decrypt_legacy_secure_payload,
@@ -66,6 +68,18 @@ class LoadSampleRequest(BaseModel):
 
 class ProcessRequest(BaseModel):
     sendResult: bool = True
+    resultScenario: str | None = None
+
+
+class CatalogAssignmentRequest(BaseModel):
+    revisionId: str
+    unknownStudyPolicy: str = "BLOCK"
+    genericStudyCode: str | None = None
+    configureOutbound: bool = False
+
+
+class RegenerateRequest(BaseModel):
+    scenario: str = "NORMAL"
 
 
 class PacsProcessRequest(BaseModel):
@@ -277,6 +291,81 @@ def orders() -> list[dict]:
     return engine.list_orders()
 
 
+@app.get("/api/catalogs")
+def catalogs() -> list[dict]:
+    return engine.store.list_catalogs()
+
+
+@app.post("/api/catalogs", status_code=201)
+def create_catalog(payload: dict) -> dict:
+    try:
+        return engine.save_catalog(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/catalogs/infer")
+def infer_catalog(payload: HL7ContractInferRequest) -> dict:
+    try:
+        return infer_studies(payload.rawMessage)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/catalogs/preview")
+def preview_catalog(payload: dict) -> dict:
+    try:
+        definition = validate_catalog(payload.get("catalog") or {})
+        revision = {**definition, "id": "PREVIEW", "version": 0}
+        groups = [{"key": str(i), "code": s["code"], "name": s["name"], "orderId": "ORD-TEST",
+                   "sampleId": "SMP-TEST", "sample": {"id": "SMP-TEST"}} for i, s in enumerate(definition["studies"])]
+        studies = bind_studies(revision, groups)
+        scenario = payload.get("scenario", "NORMAL")
+        if scenario not in {"NORMAL", *[n for s in definition["studies"] for n in s.get("scenarios", {})]}:
+            raise ValueError("Escenario inexistente")
+        results = generate_results(studies, scenario)
+        message, _ = build_profile_message({"outbound": dynamic_outbound()}, {"id": "PREVIEW"},
+            {"studies": studies, "sampleId": "SMP-TEST", "patientId": "P-TEST", "patientName": "PRUEBA^SINTETICA"}, results, "RESULT_FINAL", 0)
+        return {"results": results, "message": message}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/catalogs/{catalog_id}/revisions", status_code=201)
+def revise_catalog(catalog_id: str, payload: dict) -> dict:
+    try:
+        return engine.save_catalog(payload, catalog_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/analyzers/{analyzer_id}/catalog")
+def assign_catalog(analyzer_id: str, payload: CatalogAssignmentRequest) -> dict:
+    try:
+        assigned = engine.assign_catalog(analyzer_id, payload.revisionId, payload.unknownStudyPolicy,
+                                         payload.genericStudyCode, payload.configureOutbound)
+        listener_manager.sync(analyzer_id)
+        return assigned
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/orders/{order_id}/results/preview")
+def preview_results(order_id: str) -> dict:
+    try:
+        return engine.preview_order_results(order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/orders/{order_id}/results/regenerate")
+def regenerate_results_for_order(order_id: str, payload: RegenerateRequest) -> dict:
+    try:
+        return engine.regenerate_results(order_id, payload.scenario)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/messages")
 def messages() -> list[dict]:
     return engine.list_messages()
@@ -395,7 +484,7 @@ def scan_barcode(analyzer_id: str, payload: ScanBarcodeRequest) -> dict:
 @app.post("/api/orders/{order_id}/process")
 def process_order(order_id: str, payload: ProcessRequest) -> dict:
     try:
-        return engine.process_order(order_id, payload.sendResult)
+        return engine.process_order(order_id, payload.sendResult, payload.resultScenario)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

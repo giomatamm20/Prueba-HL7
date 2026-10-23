@@ -10,6 +10,10 @@ END_BLOCK = b"\x1c\r"
 
 
 def build_hl7_oru(analyzer: dict, sample: dict, results: list[dict], sequence: int) -> tuple[str, str]:
+    if sample.get("catalogRevisionId") and sample.get("studies"):
+        from .profile_builder import build_profile_message
+        from .study_catalog import dynamic_outbound
+        return build_profile_message({"outbound": dynamic_outbound()}, analyzer, sample, results, "RESULT_FINAL", sequence)
     sample = safe_order(sample)
     analyzer = safe_order(analyzer)
     if analyzer.get("profile") == "ANAPATH":

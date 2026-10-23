@@ -100,6 +100,7 @@
         <button data-page-link="analyzers" onclick="showPage('analyzers',this)"><i>◫</i>Analizadores</button>
         <button data-page-link="configure" onclick="showPage('configure',this)"><i>⚙</i>Configurar equipo</button>
         <button data-page-link="protocol" onclick="showPage('protocol',this)"><i>⌘</i>Diseñador HL7</button>
+        <button data-page-link="catalog" onclick="showPage('catalog',this)"><i>▤</i>Catálogo de estudios</button>
       </nav></div>
       <div class="sidebar-status"><b><span class="online-dot"></span>Simulador activo</b><br>Recibe órdenes y devuelve resultados como una máquina real.</div>
     </aside>
@@ -112,7 +113,9 @@
     <button class="secondary" onclick="refresh()">Actualizar</button>
   </header>
   <main>
+    <label class="compact-nav">Sección <select id="compactNavigation" onchange="showPage(this.value, document.querySelector('[data-page-link='+this.value+']'))"><option value="dashboard">Panel general</option><option value="operate">Operar muestras</option><option value="worklist">Worklist</option><option value="messages">Mensajes</option><option value="analyzers">Analizadores</option><option value="configure">Configurar equipo</option><option value="protocol">Diseñador HL7</option><option value="catalog">Catálogo de estudios</option><option value="pacs">PACS radiologia</option></select></label>
     <div class="page-title"><h2 id="pageTitle"></h2><p id="pageDescription"></p></div>
+    <section class="page-item catalog" id="catalogPage"><iframe title="Catálogo de estudios" id="catalogFrame" style="width:100%;height:calc(100vh - 225px);min-height:680px;border:0" src="/static/catalog.html"></iframe></section>
     <div class="banner page-item dashboard"><strong>Alcance del simulador:</strong> representa un analizador. Recibe órdenes desde LIS/Mirth y devuelve resultados o eventos; no intenta simular todo el entorno clínico.</div>
     <section class="metrics page-item dashboard">
       <div class="metric"><label>Analizadores</label><strong id="mAnalyzers">0</strong></div>
@@ -267,6 +270,11 @@
               </div>
           </div>
           <div id="hl7Canvas" class="hl7-canvas"></div>
+          <details><summary>Salida avanzada: grupos de estudios y mapeos JSON</summary>
+            <label><input type="checkbox" id="useAdvancedOutbound"> Usar esta definición completa de salida</label>
+            <p class="hint">Los perfiles dinámicos conservan aquí su estructura anidada. OBR usa repeatBy: studies y sus OBX hijos usan repeatBy: results. Las fuentes result.valueType, result.hl7Value y result.subId conservan tipos y relaciones. Cuando está activo, este bloque define la salida al guardar.</p>
+            <textarea id="advancedOutbound" rows="16" style="font-family:Consolas,monospace;width:100%" aria-label="Definición avanzada de salida"></textarea>
+          </details>
           
           <div id="canvasPopup" class="hl7-popup" style="display:none;">
               <h4 style="margin:0 0 5px 0; font-size:13px; color:#2196F3">Mapear <span id="popupFieldId"></span></h4>
@@ -396,6 +404,15 @@
   </main>
     </div>
   </div>
+  <style>.compact-nav{display:none}@media(max-width:900px){.compact-nav{display:block;margin-bottom:16px}}body[data-page="catalog"] .page-item.catalog{display:block}dialog.results-dialog{width:min(1200px,94vw);max-height:88vh;border:1px solid #ccd9dc;border-radius:12px;padding:24px}dialog::backdrop{background:#102c3a88}.results-scroll{overflow:auto;max-height:42vh}</style>
+  <dialog id="resultsDialog" class="results-dialog">
+    <div class="row"><h2>Resultados generados</h2><button class="ghost" onclick="el('resultsDialog').close()">Cerrar</button></div>
+    <p id="resultsRevision" class="hint"></p><p id="resultsError" role="alert"></p>
+    <div class="results-scroll"><table><thead><tr><th>Estudio / muestra</th><th>Grupo / padre</th><th>Parámetro</th><th>Tipo</th><th>Valor</th><th>Unidad / referencia</th></tr></thead><tbody id="resultsRows"></tbody></table></div>
+    <details open><summary>Vista previa HL7</summary><pre id="resultsHL7" style="max-height:260px;overflow:auto"></pre></details>
+    <div class="row"><label>Escenario <select id="resultsScenario"></select></label><button class="warn" onclick="regenerateOrderResults()">Regenerar valores explícitamente</button></div>
+    <p class="hint">Reenviar conserva los valores. Regenerar crea una nueva generación y conserva la anterior en el historial de la orden.</p>
+  </dialog>
   <script>
     const el = id => document.getElementById(id);
     const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -411,17 +428,20 @@
         analyzers:["Analizadores", "Consulta el estado de los equipos configurados y modifica su modo de operación."],
         configure:["Configurar equipo", "Define cómo se identifica, recibe órdenes y entrega resultados el analizador simulado."],
         protocol:["Diseñador HL7", "Crea versiones del contrato de comunicación sin modificar código."],
+        catalog:["Catálogo de estudios", "Define parámetros y valores sintéticos, guarda revisiones y asígnalas a los equipos."],
         worklist:["Worklist", "Órdenes recibidas y su progreso dentro del equipo simulado."],
         messages:["Mensajes", "Trazabilidad de los HL7/ASTM recibidos, enviados y sus ACK."]
       };
       document.body.dataset.page = page;
+      el('compactNavigation').value = page;
+      if (page === 'catalog') el('catalogFrame').contentWindow.postMessage({type:'refresh-analyzers'}, location.origin);
       document.querySelectorAll("[data-page-link]").forEach(item => item.classList.toggle("active", item === button));
       el("pageTitle").textContent = titles[page][0];
       el("pageDescription").textContent = titles[page][1];
       window.scrollTo({ top:0, behavior:"smooth" });
     }
 
-    async function get(path) { const r = await fetch(path); if (!r.ok) throw Error(path); return r.json(); }
+    async function get(path) { const r = await fetch(path); if (!r.ok) { const error = await r.json().catch(()=>({})); throw Error(error.detail || path); } return r.json(); }
     async function send(method, path, body = {}) {
       const r = await fetch(path, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
       if (!r.ok) throw Error((await r.json()).detail || path);
@@ -430,6 +450,9 @@
     const post = (path, body = {}) => send("POST", path, body);
     const patch = (path, body = {}) => send("PATCH", path, body);
     const put = (path, body = {}) => send("PUT", path, body);
+    window.addEventListener('message', event => {
+      if (event.origin === location.origin && event.data?.type === 'catalog-assigned') refresh().catch(console.error);
+    });
 
     window.editingProfileId = null;
 
@@ -487,7 +510,7 @@
           return idxA - idxB;
       });
       
-      return { 
+      const definition = {
           name: el("profileName").value, 
           activate: true, 
           inbound: {
@@ -516,6 +539,10 @@
               }
           }
       };
+      if (el('useAdvancedOutbound').checked) {
+        definition.outbound = JSON.parse(el('advancedOutbound').value);
+      }
+      return definition;
     }
     
     async function saveProtocolProfile() {
@@ -585,6 +612,8 @@
     function hydrateProtocolProfile(profile) {
       const inbound=profile.inbound || {}, mappings=inbound.mappings || [];
       const event=Object.values(profile.outbound?.events || {})[0] || {}, segments=event.segments || [];
+      el('advancedOutbound').value=JSON.stringify(profile.outbound || {}, null, 2);
+      el('useAdvancedOutbound').checked=segments.some(s=>s.repeatBy==='studies' || s.children?.length);
       window.savedInboundSchema = inbound.schema || null;
       window.savedInboundRawHL7 = inbound.rawHL7 || null;
       if (window.savedInboundSchema) {
@@ -622,6 +651,8 @@
     }
     function resetProtocolProfile() {
       window.editingProfileId = null;
+      el('useAdvancedOutbound').checked=false;
+      el('advancedOutbound').value='';
       if (el("saveProfileButton")) el("saveProfileButton").textContent = "Guardar perfil nuevo";
       window.savedInboundSchema = null;
       window.savedOutboundSchema = null;
@@ -936,12 +967,35 @@
         <button ${canSend ? "" : "disabled"} onclick="sendOrder('${order.id}')">Enviar informe</button>
         <button class="secondary" ${canResend ? "" : "disabled"} onclick="resendOrder('${order.id}')">Reenviar resultado</button>
         <button class="secondary" ${canProcess ? "" : "disabled"} onclick="processAndSend('${order.id}')">Todo</button>
+        ${order.results?.length ? `<button class="ghost" onclick="previewOrderResults('${order.id}')">Ver resultados / HL7</button>` : ""}
         ${hasEvent("STATUS_CHANGE") ? `<button class="ghost" onclick="emitStatus('${order.id}')">SC/IP</button>` : ""}
         ${hasEvent("NEW_SAMPLE") ? `<button class="ghost" onclick="emitNewSample('${order.id}')">Nueva muestra</button>` : ""}
         ${hasEvent("DELETE_SAMPLE") ? `<button class="ghost" onclick="emitDelete('${order.id}')">Eliminar</button>` : ""}
         ${hasEvent("REPORT_SUPPLEMENTARY") ? `<button class="ghost" onclick="emitSupplementary('${order.id}')">Suplementario</button>` : ""}
         ${hasEvent("REPORT_CANCELLED") ? `<button class="ghost" onclick="emitCancelledReport('${order.id}')">Cancelar informe</button>` : ""}
       </div>`;
+    }
+
+    let previewOrderId = null;
+    async function previewOrderResults(id) {
+      previewOrderId = id;
+      const order = orderList.find(o => o.id === id);
+      if (!el('resultsDialog').open) el('resultsDialog').showModal();
+      el('resultsError').textContent = '';
+      el('resultsRows').innerHTML = (order?.results || []).map(r => `<tr><td>${esc(r.studyCode)}<br>${esc(r.sampleId)}</td><td>${esc(r.subId || '—')}<br>${esc(r.parentGroupId)}</td><td>${esc(r.code)} — ${esc(r.name)}</td><td>${esc(r.valueType || 'NM')}</td><td>${esc(typeof r.value === 'object' ? [r.value.code,r.value.name,r.value.system].join(' / ') : r.value)}</td><td>${esc(r.unit)}<br>${esc(r.referenceRange)}</td></tr>`).join('');
+      el('resultsRevision').textContent = `Revisión ${order?.catalogRevisionId || 'legado'} · generación ${order?.generation || 1} · escenario ${order?.resultScenario || 'NORMAL'}${order?.catalogFallbacks?.length ? ' · Plantilla genérica usada: ' + order.catalogFallbacks.map(s=>s.code).join(', ') : ''}`;
+      const scenarios = new Set(['NORMAL', ...(order?.studies || []).flatMap(s => Object.keys(s.definition?.scenarios || {}))]);
+      el('resultsScenario').innerHTML = [...scenarios].map(s=>`<option>${esc(s)}</option>`).join('');
+      el('resultsScenario').value = order?.resultScenario || 'NORMAL';
+      el('resultsHL7').textContent = 'Preparando vista previa…';
+      try { const data = await get(`/api/orders/${id}/results/preview`); el('resultsHL7').textContent = data.message.replace(/\r/g,'\n'); }
+      catch (error) { el('resultsHL7').textContent = ''; el('resultsError').textContent = error.message; }
+    }
+    async function regenerateOrderResults() {
+      try {
+        await post(`/api/orders/${previewOrderId}/results/regenerate`, {scenario:el('resultsScenario').value});
+        await refresh(); await previewOrderResults(previewOrderId);
+      } catch (error) { el('resultsError').textContent = error.message; }
     }
 
     // El refresco automático no debe cerrar el mensaje que el usuario está leyendo.
@@ -1006,7 +1060,7 @@
           <small>${esc(o.patientName)}</small>
         </td>
         <td>
-          <strong>${esc(o.procedureCode || o.panelCode || "-")}</strong><br>
+          <strong>${esc(o.requestedTests?.join(', ') || o.procedureCode || o.panelCode || "-")}</strong><br>
           <small>${esc(o.procedureName || o.panelName || "-")}</small><br>
           <small>Prioridad ${esc(o.priority || "-")}</small>
         </td>

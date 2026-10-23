@@ -17,23 +17,56 @@ def build_profile_message(profile: dict, analyzer: dict, order: dict, results: l
     control_id = f"{analyzer['id']}-{event}-{now.strftime('%Y%m%d%H%M%S%f')}-{sequence:06d}"
     base = _base_context(analyzer, order, results, now, control_id, event)
     rows: list[list[str]] = []
-    for segment in event_config.get("segments") or []:
-        repetitions = results if segment.get("repeatBy") == "results" else [None]
-        if segment.get("requiredWhen") == "hasResults" and not results:
-            continue
-        for index, result in enumerate(repetitions, start=1):
-            context = {**base, "result": result or {}, "counter": index}
-            row = [segment["name"]]
-            if segment["name"] == "MSH":
-                row.append("^~\\&")
-            for field in segment.get("fields") or []:
-                value = resolve_value(field, context)
-                if field.get("required") and value in (None, ""):
-                    raise ValueError(f"Outbound mapping requires {field.get('source') or field['target']}")
-                if value is not None:
-                    if field["target"] != "MSH-2":
-                        _write_path(row, field["target"], escaped(value, scalar="." in field["target"]))
-            rows.append(row)
+    def render(segments, inherited, scoped_results, depth=0):
+        if depth > 6:
+            raise ValueError("Outbound groups exceed nesting limit")
+        for segment in segments:
+            repeat = segment.get("repeatBy")
+            repetitions = order.get("studies", []) if repeat == "studies" else scoped_results if repeat == "results" else [None]
+            if segment.get("requiredWhen") == "hasResults" and not scoped_results:
+                continue
+            if segment.get("requiredWhen") == "hasNote" and not inherited.get("result", {}).get("note"):
+                continue
+            for index, item in enumerate(repetitions, start=1):
+                context = {**inherited, "counter": index}
+                children_results = scoped_results
+                if repeat == "studies":
+                    context["study"] = {**item, "counter": index}
+                    context["test"] = {"code": item["code"], "name": item.get("name") or item.get("definition", {}).get("name")}
+                    context["sample"] = {**inherited["sample"], **item.get("sample", {}), "id": item.get("sampleId") or inherited["sample"].get("id")}
+                    context["order"] = {**inherited["order"], "id": item.get("orderId") or inherited["order"].get("id"),
+                                        "fillerId": item.get("fillerOrderId") or inherited["order"].get("fillerId")}
+                    children_results = [r for r in scoped_results if r.get("studyKey") == item["key"]]
+                elif repeat == "results":
+                    context["result"] = item
+                    children_results = [item]
+                render_row(segment, context)
+                render(segment.get("children", []), context, children_results, depth + 1)
+
+    def render_row(segment, context):
+        row = [segment["name"]]
+        if segment["name"] == "MSH":
+            row.append("^~\\&")
+        for field in segment.get("fields") or []:
+            value = resolve_value(field, context)
+            if field.get("required") and value in (None, ""):
+                raise ValueError(f"Outbound mapping requires {field.get('source') or field['target']}")
+            if value is not None:
+                if field["target"] != "MSH-2":
+                    _write_path(row, field["target"], escaped(value, scalar="." in field["target"]))
+        result = context.get("result") or {}
+        if segment["name"] == "OBX" and result.get("valueType"):
+            if len(row) <= 2 or row[2] != result["valueType"]:
+                raise ValueError("OBX-2 debe usar result.valueType para el tipo de parámetro configurado")
+            if result.get("subId") and (len(row) <= 4 or row[4] != result["subId"]):
+                raise ValueError("OBX-4 debe usar result.subId para conservar los grupos repetibles")
+        rows.append(row)
+    segments = event_config.get("segments") or []
+    # Flat profiles remain valid for one study. Multi-study output requires an
+    # explicit repeated OBR group so vendor mappings cannot silently lose data.
+    if len(order.get("studies", [])) > 1 and results and not any(s.get("repeatBy") == "studies" for s in segments):
+        raise ValueError("Salida multiestudio requiere un OBR repeatBy=studies con OBX hijos; aplique la salida dinámica del catálogo")
+    render(segments, base, results)
     message = declare_utf8("\r".join("|".join(row) for row in rows) + "\r")
     schema = event_config.get("schema") or outbound.get("schema") or {}
     delimiters = schema.get("delimiters") or {}
@@ -55,6 +88,8 @@ def resolve_value(field: dict, context: dict) -> Any:
             value = hl7_path_value(context.get("inbound") or "", source[8:])
         else:
             value = _resolve_path(context, source)
+            if source == "result.value" and "hl7Value" in context.get("result", {}):
+                value = context["result"]["hl7Value"]
         if value in (None, ""):
             value = field.get("default")
     if value is None:

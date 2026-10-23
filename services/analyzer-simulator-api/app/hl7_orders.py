@@ -125,6 +125,53 @@ def parse_order(
         if (value := mapped_value(raw_message, path)) is not None
     }
 
+    # Keep each ORC/OBR/SPM group in wire order, including repeated study codes.
+    # SPM may precede OBR (OML^O33) or follow it (ORM/OML^O21).
+    studies = []
+    current_orc, current_spm, current_study = None, None, None
+    spm_consumed = False
+    for segment in segments_from_message(raw_message):
+        if segment[0] == "ORC":
+            current_orc = segment
+            current_study = None
+        elif segment[0] == "SPM":
+            current_spm = segment
+            spm_consumed = False
+            if metadata["messageType"] == "OML^O33":
+                current_study = None
+            elif current_study is not None:
+                current_study["sample"] = {"id": field(segment, 2), "code": component(field(segment, 4), 0),
+                                           "name": component(field(segment, 4), 1), "raw": segment}
+                current_study["sampleId"] = field(segment, 2) or current_study["sampleId"]
+                spm_consumed = True
+        elif segment[0] == "OBR":
+            scoped_spm = current_spm if (not spm_consumed or metadata["messageType"] == "OML^O33" or
+                                         field(current_spm, 2) == field(segment, 3)) else None
+            group_message = "\r".join("|".join(row) for row in [by_type["MSH"][0], *([current_orc] if current_orc else []),
+                                                                 segment, *([scoped_spm] if scoped_spm else [])]) + "\r"
+            group_value = lambda name, default: mapped_value(group_message, mappings.get(name)) or default
+            specimen_id = field(scoped_spm, 2)
+            specimen_id = group_value("sampleId", specimen_id or field(segment, 3) or sample_id)
+            current_study = {"key": f"study-{len(studies) + 1}",
+                             "code": group_value("procedureCode", component(field(segment, 4), 0) or "UNKNOWN"),
+                             "name": group_value("procedureName", component(field(segment, 4), 1) or ""),
+                             "orderId": field(current_orc, 2) or field(segment, 2) or order_id,
+                             "fillerOrderId": field(current_orc, 3) or field(segment, 3),
+                             "sampleId": specimen_id, "sample": {"id": specimen_id,
+                               "code": component(field(scoped_spm, 4), 0), "name": component(field(scoped_spm, 4), 1), "raw": scoped_spm},
+                             "orc": current_orc, "obr": segment, "notes": []}
+            studies.append(current_study)
+            spm_consumed = scoped_spm is not None
+        elif segment[0] == "NTE" and current_study is not None:
+            current_study["notes"].append(field(segment, 3) or "")
+
+    if studies:
+        # The queue barcode identifies the first study's specimen, never an
+        # unrelated SPM encountered later in a multi-specimen message.
+        sample_id = studies[0]["sampleId"]
+        sample_code = studies[0]["sample"].get("code") or sample_id
+        sample_name = studies[0]["sample"].get("name") or sample_name
+
     return {
         "messageType": metadata["messageType"],
         "messageControlId": metadata["messageControlId"],
@@ -154,7 +201,8 @@ def parse_order(
         "visitNumber": mapped("visitNumber", field(pv1, 19)),
         "priority": mapped("priority", field(obr, 27) or field(orc, 7) or "ROUTINE"),
         "requestedAt": field(obr, 6) or field(orc, 9),
-        "requestedTests": requested or [procedure_code],
+        "requestedTests": [study["code"] for study in studies] or requested or [procedure_code],
+        "studies": studies,
         "panelCode": procedure_code,
         "panelName": procedure_name,
         "procedureCode": procedure_code,

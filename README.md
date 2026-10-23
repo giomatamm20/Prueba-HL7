@@ -1,5 +1,11 @@
 # HL7 Lab Integration Simulator
 
+El [catálogo de estudios y resultados dinámicos](docs/RESULTADOS_DINAMICOS.md)
+permite crear parámetros, generadores, escenarios y grupos repetibles desde la
+interfaz, guardar revisiones y asociarlas a equipos HL7. Incluye vista previa de
+ORU, órdenes multiestudio y regeneración explícita sin alterar los reenvíos.
+Ver la [validación de esta implementación](docs/VALIDACION_RESULTADOS_DINAMICOS_2026-10-22.md).
+
 La configuración de equipos HL7, puertos disponibles y contratos de entrada/salida
 se explica en [Configuración de equipos HL7](docs/CONFIGURACION_EQUIPOS_HL7.md).
 Un equipo permanece en STANDBY hasta completar su contrato; recibir una orden
