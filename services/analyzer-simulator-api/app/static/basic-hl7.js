@@ -262,7 +262,7 @@
     }catch(error){get('basicHL7FieldStatus').textContent=error.message;}
   }
   function initialize() {if(get('basicHL7Rows'))reset();}
-  window.basicHL7={fields,initialize,load,reset,readOutbound,selectEvent,suggestInbound,suggestedPaths,addFieldFromForm,updateExamples,readExample,normalizeMessage,applyMappings,currentEvent:()=>selectedEvent,
+  window.basicHL7={fields,initialize,load,reset,readOutbound,selectEvent,suggestInbound,suggestedPaths,addFieldFromForm,updateExamples,readExample,normalizeMessage,applyMappings,removeSchemaPath,currentEvent:()=>selectedEvent,
     apply:definition=>{
       for(const [name,event] of Object.entries(stagedEvents)){definition.outbound ||= {};definition.outbound.events ||= {};definition.outbound.events[name]=structuredClone(event);}
       return applyMappings(definition,values(),[...dirtyOutputs],originalMappings,selectedEvent);

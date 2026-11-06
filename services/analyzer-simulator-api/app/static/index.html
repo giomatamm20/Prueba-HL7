@@ -99,8 +99,7 @@
       <div><div class="nav-title">Configuración</div><nav class="nav">
         <button data-page-link="analyzers" onclick="showPage('analyzers',this)"><i>◫</i>Analizadores</button>
         <button data-page-link="configure" onclick="showPage('configure',this)"><i>⚙</i>Configurar equipo</button>
-        <button data-page-link="protocol" onclick="showPage('protocol',this)"><i>⌘</i>Diseñador HL7</button>
-        <button data-page-link="catalog" onclick="showPage('catalog',this)"><i>▤</i>Catálogo de estudios</button>
+        <button data-page-link="protocol" onclick="showPage('protocol',this)"><i>⌘</i>Perfil del equipo</button>
       </nav></div>
       <div class="sidebar-status"><b><span class="online-dot"></span>Simulador activo</b><br>Recibe órdenes y devuelve resultados como una máquina real.</div>
     </aside>
@@ -113,9 +112,8 @@
     <button class="secondary" onclick="refresh()">Actualizar</button>
   </header>
   <main>
-    <label class="compact-nav">Sección <select id="compactNavigation" onchange="showPage(this.value, document.querySelector('[data-page-link='+this.value+']'))"><option value="dashboard">Panel general</option><option value="operate">Operar muestras</option><option value="worklist">Worklist</option><option value="messages">Mensajes</option><option value="analyzers">Analizadores</option><option value="configure">Configurar equipo</option><option value="protocol">Diseñador HL7</option><option value="catalog">Catálogo de estudios</option><option value="pacs">PACS radiologia</option></select></label>
+    <label class="compact-nav">Sección <select id="compactNavigation" onchange="showPage(this.value, document.querySelector('[data-page-link='+this.value+']'))"><option value="dashboard">Panel general</option><option value="operate">Operar muestras</option><option value="worklist">Worklist</option><option value="messages">Mensajes</option><option value="analyzers">Analizadores</option><option value="configure">Configurar equipo</option><option value="protocol">Perfil del equipo</option><option value="pacs">PACS radiologia</option></select></label>
     <div class="page-title"><h2 id="pageTitle"></h2><p id="pageDescription"></p></div>
-    <section class="page-item catalog" id="catalogPage"><iframe title="Catálogo de estudios" id="catalogFrame" style="width:100%;height:calc(100vh - 225px);min-height:680px;border:0" src="/static/catalog.html"></iframe></section>
     <div class="banner page-item dashboard"><strong>Alcance del simulador:</strong> representa un analizador. Recibe órdenes desde LIS/Mirth y devuelve resultados o eventos; no intenta simular todo el entorno clínico.</div>
     <section class="metrics page-item dashboard">
       <div class="metric"><label>Analizadores</label><strong id="mAnalyzers">0</strong></div>
@@ -206,126 +204,16 @@
             <div><label>Host que recibirá resultados</label><input id="cfgDestinationHost" value="localhost"></div>
             <div><label>Puerto de resultados</label><input id="cfgDestinationPort" type="number" value="9004"></div>
           </div>
-          <label>Pruebas admitidas <small>(códigos separados por coma; vacío = sin restricción)</small></label>
-          <input id="cfgTests" value="">
-          <label><input id="cfgAcceptUnknownTests" type="checkbox" style="width:auto"> Recibir exámenes aunque no estén en el catálogo (solo HL7)</label>
-          <p class="hint">Devuelve el ACK y guarda la orden. Los exámenes desconocidos requieren configuración antes de generar o enviar resultados. También puedes ajustar esta opción en Catálogo de estudios, paso 1.</p>
+          <div id="cfgASTMTests"><label>Pruebas admitidas ASTM (códigos separados por coma)</label><input id="cfgTests" value=""></div>
+          <p id="cfgProfileHint" class="hint">La recepción HL7 y sus estudios se configuran juntos en Perfil del equipo.</p>
 
           <div class="row" style="margin-top:12px">
             <button onclick="createAnalyzerConfig()">Guardar</button>
           </div>
           <p id="configStatus" class="hint"></p>
         </article>
-        <style>
-          .hl7-popup { position:absolute; background:#fff; z-index:100; font-family:sans-serif; }
-          .hl7-popup .row-btns { display:flex; gap:5px; margin-top:5px; flex-wrap:wrap; }
-          .protocol-toolbar { display:flex; gap:10px; margin:14px 0; align-items:center; flex-wrap:wrap; }
-          .legacy-mapping { display:none; }
-          .basic-hl7{background:#f4f9fa;border:1px solid #dbe5e8;border-radius:10px;padding:16px;margin:16px 0}
-          .basic-hl7 h3{margin:0 0 8px}.basic-mapping-table{width:100%;min-width:660px;border-collapse:collapse}.basic-mapping-table td,.basic-mapping-table th{padding:10px;border-bottom:1px solid #dbe5e8;text-align:left;vertical-align:top}.basic-mapping-table th{width:25%;font-size:13px}.basic-mapping-table input{width:100%}.basic-mapping-table small{display:block;overflow-wrap:anywhere}.basic-required{font-size:11px!important;font-weight:normal!important;display:flex!important;align-items:center;gap:5px}.basic-required input{width:auto!important}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-        </style>
-        <article class="panel protocol">
-          <p class="section-label">Diseñador de protocolo</p><h2>Configurar contrato HL7</h2>
-          <p class="hint">Genera la base desde un mensaje del equipo, ajusta los campos básicos y guarda el perfil. La vista previa se actualiza con los cambios.</p>
-          <div class="cols-2"><div><label>Analizador</label><select id="profileAnalyzer" onchange="onProtocolAnalyzerChanged()"></select></div><div><label for="profileName">Nombre del perfil</label><input id="profileName" value="Perfil ORU estándar"></div></div>
-          
-          <section class="basic-hl7" aria-labelledby="basicHL7Title">
-            <h3 id="basicHL7Title">Campos básicos del equipo</h3>
-            <p class="hint">Después de generar la base desde un mensaje, revisa de dónde se lee cada dato y dónde se devuelve. Los campos de entrada y salida se configuran por separado.</p>
-            <p class="hint">Las ubicaciones pertenecen a este perfil y se pueden adaptar a cada equipo. Una ruta tiene el formato SEG-campo[repetición].componente.subcomponente; los índices empiezan en 1. En entrada, separa alternativas por coma; en salida, indica uno o varios destinos. Vacío omite ese dato en la salida. Los valores del ejemplo son solo una ayuda de lectura.</p>
-            <label for="basicHL7Event">Mensaje de salida que estás configurando</label><select id="basicHL7Event" onchange="window.basicHL7.selectEvent(this.value)"></select>
-            <div style="overflow-x:auto"><table class="basic-mapping-table"><thead><tr><th>Dato</th><th>Leer del mensaje recibido</th><th>Devolver en el resultado</th></tr></thead><tbody id="basicHL7Rows"></tbody></table></div>
-            <details><summary>Añadir otro dato del equipo</summary>
-              <label for="basicHL7NewSource">Dato</label><select id="basicHL7NewSource">
-                <option value="patient.birthDate">Fecha de nacimiento</option><option value="patient.sex">Sexo</option><option value="patient.address">Dirección</option>
-                <option value="sample.code">Tipo de muestra: código</option><option value="sample.name">Tipo de muestra: nombre</option>
-                <option value="visit.number">Número de visita</option><option value="visit.type">Tipo de visita</option>
-                <option value="order.priority">Prioridad</option><option value="order.clinicalInfo">Información clínica</option>
-                <option value="custom">Dato propio del equipo</option>
-              </select>
-              <label for="basicHL7NewKey">Clave para un dato propio</label><input id="basicHL7NewKey" placeholder="Ej. referenciaExterna">
-              <label for="basicHL7NewLabel">Nombre para mostrar (opcional)</label><input id="basicHL7NewLabel" placeholder="Ej. Referencia externa">
-              <button type="button" class="ghost" onclick="window.basicHL7.addFieldFromForm()">+ Añadir dato</button>
-              <p id="basicHL7FieldStatus" class="hint" role="status"></p>
-            </details>
-            <p class="hint">Guarda el perfil para aplicar estos cambios al equipo. Los valores leídos del ejemplo se muestran como ayuda; la respuesta conserva los datos de cada orden real.</p>
-          </section>
 
-          <div class="legacy-mapping" id="legacyMapping">
-             <input id="profileMessageType" value="ORU^R01">
-             <input id="profileVersion" value="2.5.1">
-             <input id="profileInboundType" value="OML^O21">
-             <input id="profileResultDocument" value="">
-             <input id="profileResultObxType" value="NM">
-             <input id="profileZSegment" value="">
-             <input id="profileFixedMapping" value="{}">
-          </div>
-
-          <div class="protocol-toolbar">
-              <div><label for="profileReceptionMode">Modo de recepción</label><select id="profileReceptionMode" onchange="onReceptionModeChanged()">
-                  <option value="CONTRACT">Por contrato</option>
-                  <option value="PERMISSIVE">Permisivo: recibir sin exigir contrato</option>
-                  <option value="LEARN">Aprender del primer mensaje externo</option>
-              </select></div>
-              <label style="display:flex; align-items:center; gap:8px; cursor:pointer; background:#217a53; color:#fff; padding:4px 10px; border-radius:12px; font-size:11px; font-weight:bold;">
-                  <input type="checkbox" id="profileStrictValidation" onchange="onStrictValidationChanged()" checked> Estricta: rechazar incumplimientos. Desmarcada: advertencias.
-              </label>
-              <div style="margin-left:auto; display:flex; gap:10px; align-items:center;">
-                  <span id="badgeInbound" style="display:none; font-size:11px; background:#217a53; color:#fff; padding:3px 8px; border-radius:12px; font-weight:600;"><i class="fas fa-check-circle"></i> Inbound Guardado</span>
-                  <span id="badgeOutbound" style="display:none; font-size:11px; background:#a76505; color:#fff; padding:3px 8px; border-radius:12px; font-weight:600;"><i class="fas fa-check-circle"></i> Outbound Guardado</span>
-                  <button type="button" style="background:#176b7a;" onclick="openValidatorModal()">✨ Generar Contrato Semántico</button>
-              </div>
-          </div>
-          <p id="profileReceptionStatus" class="hint" role="status"></p>
-          <details><summary>Salida avanzada: grupos de estudios y mapeos JSON</summary>
-            <label><input type="checkbox" id="useAdvancedOutbound"> Usar esta definición completa de salida</label>
-            <p class="hint">Los perfiles dinámicos conservan aquí su estructura anidada. OBR usa repeatBy: studies y sus OBX hijos usan repeatBy: results. Las fuentes result.valueType, result.hl7Value y result.subId conservan tipos y relaciones. Cuando está activo, este bloque define la salida al guardar.</p>
-            <textarea id="advancedOutbound" rows="16" style="font-family:Consolas,monospace;width:100%" aria-label="Definición avanzada de salida"></textarea>
-          </details>
-          
-          <div id="validatorModal" class="hl7-popup" style="display:none; width:650px; max-width:95vw; max-height:85vh; overflow-y:auto; background:#fff; padding:20px; border-radius:12px; border:1px solid #dbe5e8; box-shadow:0 12px 36px rgba(0,0,0,0.15)">
-              <h4 style="margin:0 0 10px 0; color:#176b7a; font-size:16px">✨ Auto-Generador de Contratos Semánticos</h4>
-              <p style="font-size:12px; margin-bottom:12px; color:#64747c; line-height:1.5">Pega un mensaje HL7 crudo (OML u ORU). Se conservarán segmentos, orden, repeticiones y componentes; los datos clínicos se convertirán en placeholders y los códigos estructurales en reglas editables.</p>
-              
-              <textarea id="validatorText" style="height:120px; font-family:Consolas,monospace; font-size:11px; width:100%; border:1px solid #dbe5e8; border-radius:6px; padding:10px" placeholder="MSH|^~\&|HIS..."></textarea>
-              
-              <div id="semanticTreeContainer" style="display:none; margin-top:14px;">
-                  <h4 style="margin:0 0 8px 0; font-size:13px; color:#17252b">Árbol Semántico Inferido <small style="font-weight:normal; color:#bc3d3d">(Puedes editarlo libremente)</small></h4>
-                  <textarea id="semanticTreeCode" style="height:250px; width:100%; resize:vertical; background:#1e1e1e; color:#d4d4d4; padding:12px; border-radius:6px; font-size:11px; font-family:Consolas,monospace; border:none;"></textarea>
-                  <h4 style="margin:10px 0 6px; font-size:13px; color:#17252b">Vista previa del contrato aplicado</h4>
-                  <pre id="inferredContractPreview" style="max-height:180px; overflow:auto; white-space:pre; background:#f7fafc; border:1px solid #dbe5e8; padding:10px; border-radius:6px; font-size:10px;"></pre>
-              </div>
-
-              <div class="row-btns" style="margin-top:16px">
-                  <button type="button" id="btnAnalyzeSemantic" onclick="generateSemanticTree()" style="background:#176b7a; padding:10px 16px;">Analizar Muestra 🧠</button>
-                  <button type="button" id="btnSaveInbound" onclick="saveSemanticTree('inbound')" style="display:none; background:#217a53; padding:10px 16px;">Guardar como Contrato INBOUND (Recepción)</button>
-                  <button type="button" id="btnSaveOutbound" onclick="saveSemanticTree('outbound')" style="display:none; background:#a76505; padding:10px 16px;">Guardar como Contrato OUTBOUND (Envío)</button>
-                  <button type="button" class="ghost" onclick="closeValidatorModal()" style="padding:10px 16px;">Cerrar</button>
-              </div>
-          </div>
-
-          <div class="row" style="margin-top:14px">
-              <button id="saveProfileButton" onclick="saveProtocolProfile()" style="background:#2b6cb0; padding:10px 20px; font-weight:bold;">Guardar perfil nuevo</button>
-              <button class="ghost" onclick="startNewProtocolProfile()">+ Nuevo perfil</button>
-              <button class="ghost" onclick="loadProtocolProfiles()">Ver versiones guardadas</button>
-          </div>
-          <p id="profileStatus" class="hint"></p>
-          <p id="profileSaveState" class="hint" role="status"></p>
-          <p id="profilePreviewStatus" class="hint" role="status"></p>
-          <div class="cols-2" style="margin-top:12px; align-items:stretch;">
-              <div style="background:#f0f7f4; padding:10px; border-radius:6px; border:1px solid #c2d1c9; display:flex; flex-direction:column;">
-                  <h4 style="margin-top:0; color:#176b7a; font-size:13px">📥 Contrato de Entrada (Inbound)</h4>
-                  <p style="font-size:11px; margin-bottom:8px; color:#555; line-height:1.2;">Reglas de validación y esquema JSON que el Simulador exigirá para recibir las órdenes de Mirth.</p>
-                  <pre id="previewInboundBox" style="margin:0; max-height:250px; overflow-y:auto; font-size:10px; display:block; background:#fff; border:1px solid #ddd; padding:8px; border-radius:4px; flex-grow:1; color:#333;"></pre>
-              </div>
-              <div style="background:#fcf5eb; padding:10px; border-radius:6px; border:1px solid #e2d1bc; display:flex; flex-direction:column;">
-                  <h4 style="margin-top:0; color:#a76505; font-size:13px">📤 Mensaje de Salida (Outbound)</h4>
-                  <p style="font-size:11px; margin-bottom:8px; color:#555; line-height:1.2;">Mensaje base, contrato con placeholders y ejemplo HL7 generado con datos de prueba.</p>
-                  <pre id="profilePreview" style="margin:0; max-height:250px; overflow-y:auto; font-size:10px; display:block; background:#fff; border:1px solid #ddd; padding:8px; border-radius:4px; flex-grow:1; color:#333;"></pre>
-              </div>
-          </div>
-          <div id="profileVersions" class="stack" style="margin-top:12px"></div>
-        </article>
+        <article class="panel protocol"></article>
       </aside>
       <section class="grid">
         <article class="panel analyzers dashboard">
@@ -386,49 +274,27 @@
     <div class="row"><label>Escenario <select id="resultsScenario"></select></label><button class="warn" onclick="regenerateOrderResults()">Regenerar valores explícitamente</button></div>
     <p class="hint">Reenviar conserva los valores. Regenerar crea una nueva generación y conserva la anterior en el historial de la orden.</p>
   </dialog>
-  <script src="/static/basic-hl7.js"></script>
   <script>
     const el = id => document.getElementById(id);
     const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
     let analyzerList = [];
     let orderList = [];
     let pacsStudyList = [];
-    let loadedProtocolAnalyzerId = null, loadingProtocolAnalyzerId = null, protocolRequestSequence = 0;
-    let protocolEditorDirty = false, protocolEditorGeneration = 0;
-    let protocolLearningPending = false;
-    function onReceptionModeChanged() {
-        const mode=el('profileReceptionMode').value;
-        if(mode!=='CONTRACT')el('profileStrictValidation').checked=false;
-        el('profileStrictValidation').disabled=mode!=='CONTRACT';
-        updateSemanticBadges();markProtocolEdited();
-    }
-    function onStrictValidationChanged() {
-        if(!el('profileStrictValidation').checked && !window.savedInboundSchema)el('profileReceptionMode').value='PERMISSIVE';
-        onReceptionModeChanged();
-    }
-    function markProtocolEdited() {
-        protocolEditorDirty=true;protocolEditorGeneration++;
-        el('profileSaveState').textContent='Cambios sin guardar. Se usará el nombre escrito en Nombre del perfil.';
-        triggerAutoPreview();
-    }
-    document.querySelector('.panel.protocol').addEventListener('input',markProtocolEdited);
-
     function showPage(page, button) {
+      if(page==='catalog'){page='protocol';window.equipmentProfileUI?.openStudies();}
       const titles = {
         dashboard:["", ""],
         pacs:["PACS radiologia", "Ordenes de imagen recibidas desde Mirth, generacion del estudio y notificacion de disponibilidad."],
         operate:["Operar muestras", "Crea una muestra de prueba o escanea una orden que llegó desde el LIS/Mirth."],
         analyzers:["Analizadores", "Consulta el estado de los equipos configurados y modifica su modo de operación."],
         configure:["Configurar equipo", "Define cómo se identifica, recibe órdenes y entrega resultados el analizador simulado."],
-        protocol:["Diseñador HL7", "Crea versiones del contrato de comunicación sin modificar código."],
+        protocol:["Diseñador HL7", "Configura recepción, mensajes y analitos en un solo perfil."],
         catalog:["Catálogo de estudios", "Define parámetros y valores sintéticos, guarda revisiones y asígnalas a los equipos."],
         worklist:["Worklist", "Órdenes recibidas y su progreso dentro del equipo simulado."],
         messages:["Mensajes", "Trazabilidad de los HL7/ASTM recibidos, enviados y sus ACK."]
       };
       document.body.dataset.page = page;
       el('compactNavigation').value = page;
-      if (page === 'catalog') el('catalogFrame').contentWindow.postMessage({type:'refresh-analyzers'}, location.origin);
-      if (page === 'protocol') ensureProtocolProfileLoaded();
       document.querySelectorAll("[data-page-link]").forEach(item => item.classList.toggle("active", item === button));
       el("pageTitle").textContent = titles[page][0];
       el("pageDescription").textContent = titles[page][1];
@@ -444,323 +310,6 @@
     const post = (path, body = {}) => send("POST", path, body);
     const patch = (path, body = {}) => send("PATCH", path, body);
     const put = (path, body = {}) => send("PUT", path, body);
-    window.addEventListener('message', event => {
-      if (event.origin === location.origin && event.data?.type === 'catalog-assigned') refresh().catch(console.error);
-    });
-
-    window.editingProfileId = null;
-
-    function profileDefinition() {
-      const profileName=el('profileName').value.trim();
-      if(!profileName)throw Error('Escribe el nombre del perfil antes de guardar.');
-      const type = el("profileMessageType").value.split("^");
-      const inboundMapping = (target, id) => { const paths=el(id).value.split(",").map(x=>x.trim()).filter(Boolean); return {target,source:paths[0] || "",alternatives:paths.slice(1)}; };
-      
-      const outboundMapping = (source, id) => { 
-          const paths = el(id).value.split(",").map(x=>x.trim()).filter(Boolean); 
-          return paths.map(p => ({target: p, source}));
-      };
-      
-      const allOutboundFields = window.basicHL7.outboundFields();
-
-      let segments = [
-        { name:"MSH", fields:[{target:"MSH-3",source:"analyzer.id"},{target:"MSH-7",source:"system.timestamp"},{target:"MSH-9.1",sourceType:"fixed",value:type[0] || "ORU"},{target:"MSH-9.2",sourceType:"fixed",value:type[1] || "R01"},{target:"MSH-10",source:"system.messageId"},{target:"MSH-12",sourceType:"fixed",value:el("profileVersion").value}]},
-        { name:"ORC", fields:[{target:"ORC-1",sourceType:"fixed",value:"RE"}]},
-        { name:"OBX", repeatBy:"results", fields:[{target:"OBX-1",source:"counter"},{target:"OBX-2",sourceType:"fixed",value:el("profileResultObxType").value},{target:el("profileResultCode").value,source:"result.code"},{target:el("profileResultValue").value,source:"result.value"},{target:el("profileResultUnit").value,source:"result.unit"},{target:el("profileResultDocument").value,source:"resultDocument.pdfBase64"},{target:"OBX-11",sourceType:"fixed",value:"F"}].filter(f=>f.target && f.target.includes("-"))}
-      ];
-      
-      for (const field of allOutboundFields) {
-          const segName = field.target.split("-")[0];
-          let seg = segments.find(s => s.name === segName && !s.repeatBy);
-          if(!seg) { seg = {name:segName, fields:[]}; segments.push(seg); }
-          seg.fields.push(field);
-      }
-      
-      if (window.savedOutboundSchema?.formatVersion === 2) {
-          segments = structuredSchemaToOutboundSegments(window.savedOutboundSchema);
-      }
-      
-      if (!window.savedOutboundSchema) segments.sort((a, b) => {
-          let idxA = protocolSegmentOrder.indexOf(a.name);
-          let idxB = protocolSegmentOrder.indexOf(b.name);
-          if (idxA === -1) idxA = 999;
-          if (idxB === -1) idxB = 999;
-          return idxA - idxB;
-      });
-      
-      const definition = {
-          name: profileName,
-          activate: true, 
-          inbound: {
-              receptionMode: el('profileReceptionMode').value,
-              strictValidation: el("profileStrictValidation").checked,
-              messageType: el("profileInboundType").value,
-              schema: window.savedInboundSchema || null,
-              rawHL7: window.savedInboundRawHL7 || null,
-              mappings: [
-                  inboundMapping("patient.id","profilePatientId"),
-                  inboundMapping("patient.name","profilePatientName"),
-                  inboundMapping("order.id","profileOrderId"),
-                  inboundMapping("order.fillerId","profileFillerId"),
-                  inboundMapping("sample.id","profileSampleId"),
-                  inboundMapping("test.code","profileTestCode"),
-                  inboundMapping("test.name","profileTestName")
-              ]
-          }, 
-           outbound: {
-               schema: window.savedOutboundSchema || null,
-               rawHL7: window.savedOutboundRawHL7 || null,
-               events: {
-                  RESULT_FINAL: {
-                      messageType: window.savedOutboundSchema?.messageType || el("profileMessageType").value,
-                      version: el("profileVersion").value,
-                      segments
-                  }
-              }
-          }
-      };
-      if(window.savedProtocolDefinition){
-        definition.inbound={...structuredClone(window.savedProtocolDefinition.inbound || {}),...definition.inbound,
-          validationMode:el('profileStrictValidation').checked?'STRICT':'WARN'};
-        definition.outbound=structuredClone(window.savedProtocolDefinition.outbound || {});
-      }
-      if(window.generatedOutboundDefinition)definition.outbound=structuredClone(window.generatedOutboundDefinition);
-      if (el('useAdvancedOutbound').checked) {
-        definition.outbound = JSON.parse(el('advancedOutbound').value);
-      }
-      return window.basicHL7.apply(definition);
-    }
-    
-    async function saveProtocolProfile() {
-        try {
-            const analyzerId = el("profileAnalyzer").value;
-            const definition = profileDefinition();
-            const savedGeneration=protocolEditorGeneration;
-            const editing = window.editingProfileId;
-            const profile = editing
-                ? await put(`/api/analyzers/${analyzerId}/protocol-profiles/${editing}`, definition)
-                : await post(`/api/analyzers/${analyzerId}/protocol-profiles`, definition);
-            if(analyzerId!==el('profileAnalyzer').value)return;
-            window.editingProfileId = profile.id;
-            protocolLearningPending=profile.inbound?.receptionMode==='LEARN';
-            if(savedGeneration===protocolEditorGeneration){
-                protocolEditorDirty=false;el('profileName').value=profile.name;
-                el('profileSaveState').textContent=`Guardado: ${profile.name} · revisión ${profile.version}.`;
-            }else el('profileSaveState').textContent='La revisión enviada quedó guardada; hay cambios posteriores sin guardar.';
-            el("saveProfileButton").textContent = `Actualizar ${profile.name} v${profile.version}`;
-            el("profileStatus").textContent = editing
-                ? `Revisión ${profile.name} v${profile.version} creada; se conserva el contrato anterior.`
-                : `Perfil ${profile.name} v${profile.version} creado y activado.`;
-            if (profile.status !== "ACTIVE") el("profileStatus").textContent = "Borrador guardado. Completa los contratos o selecciona recepción permisiva / aprendizaje y guarda para activar.";
-            else if(protocolLearningPending)el('profileStatus').textContent=`${profile.name} v${profile.version} activo. Esperando el primer mensaje HL7 externo para generar una revisión semántica.`;
-            await loadProtocolProfiles(false);
-        } catch(error) {
-            el("profileStatus").textContent = error.message;
-        }
-    }
-
-    function startNewProtocolProfile() {
-        resetProtocolProfile();
-        loadedProtocolAnalyzerId=el("profileAnalyzer").value;
-        el("profileStatus").textContent = "Modo nuevo perfil: el próximo guardado creará una plantilla independiente.";
-    }
-
-    async function deleteProtocolProfile(id) {
-        const selected=(window.cachedProfiles || []).find(p=>p.id===id);
-        if(!selected)return;
-        const description=`${selected.name} v${selected.version}`;
-        if(!confirm(`¿Eliminar ${description}?${selected.status==='ACTIVE' ? ' Es el perfil activo: el equipo quedará en STANDBY hasta activar otro perfil completo.' : ''}`)) return;
-        try {
-            const analyzerId = el("profileAnalyzer").value;
-            const response = await fetch(`/api/analyzers/${analyzerId}/protocol-profiles/${id}`, {method: "DELETE"});
-            if (!response.ok) throw Error((await response.json()).detail || "No se pudo retirar el perfil");
-            const wasEditing=window.editingProfileId===id;
-            if(wasEditing)resetProtocolProfile();
-            await loadProtocolProfiles(wasEditing);
-            el("profileStatus").textContent = `Versión eliminada: ${description}.`;
-            await refresh();
-        } catch(error) { el("profileStatus").textContent=error.message; }
-    }
-    
-    function editProtocolProfile(id) {
-        const p = window.cachedProfiles.find(x => x.id === id);
-        if(p) {
-            resetProtocolProfile();
-            hydrateProtocolProfile(p);
-            window.editingProfileId = p.id;
-            el("saveProfileButton").textContent = `Actualizar ${p.name} v${p.version}`;
-            el("profileStatus").textContent = `Editando ${p.name} v${p.version}. Guardar creará una nueva revisión.`;
-            triggerAutoPreview();
-        }
-    }
-
-    async function previewProtocolProfile({automatic=false}={}) {
-      try {
-        const analyzerId=el("profileAnalyzer").value;
-        const preview=await post(`/api/analyzers/${analyzerId}/protocol-profiles/preview`, profileDefinition());
-        el("profilePreview").style.display="block";
-        el("profilePreview").textContent=buildOutboundPreviewText(preview.message);
-        if(!automatic)el("profilePreview").scrollIntoView({behavior:"smooth",block:"start"});
-        el("profilePreviewStatus").textContent="Vista previa con datos de prueba; el estado de guardado se indica arriba.";
-      } catch(error) { el("profilePreviewStatus").textContent='Vista previa: '+error.message; }
-    }
-    function setProtocolPath(inputId, mappings, target, fallback="") {
-      const mapping=(mappings || []).find(item=>item.target===target);
-      el(inputId).value=mapping ? [mapping.source,...(mapping.alternatives || [])].filter(Boolean).join(", ") : fallback;
-    }
-    function hydrateProtocolProfile(profile) {
-      protocolEditorDirty=false;protocolEditorGeneration++;
-      el('profileSaveState').textContent=`Cargado: ${profile.name} · revisión ${profile.version}.`;
-      const inbound=profile.inbound || {}, mappings=inbound.mappings || [];
-      window.savedProtocolDefinition=structuredClone(profile);
-      window.generatedOutboundDefinition=null;
-      const event=Object.values(profile.outbound?.events || {})[0] || {}, segments=event.segments || [];
-      el('advancedOutbound').value=JSON.stringify(profile.outbound || {}, null, 2);
-      el('useAdvancedOutbound').checked=segments.some(s=>s.repeatBy==='studies' || s.children?.length);
-      window.savedInboundSchema = inbound.schema || null;
-      window.savedInboundRawHL7 = inbound.rawHL7 || null;
-      if (window.savedInboundSchema) {
-          if(document.getElementById("semanticTreeCode")) document.getElementById("semanticTreeCode").value = JSON.stringify(window.savedInboundSchema, null, 2);
-          if(document.getElementById("semanticTreeContainer")) document.getElementById("semanticTreeContainer").style.display = "block";
-          window.strictRequiredFields = requiredPathsFromContract(window.savedInboundSchema);
-      } else {
-          if(document.getElementById("semanticTreeCode")) document.getElementById("semanticTreeCode").value = "";
-          if(document.getElementById("semanticTreeContainer")) document.getElementById("semanticTreeContainer").style.display = "none";
-      }
-      window.savedOutboundSchema = profile.outbound?.schema || null;
-      window.savedOutboundRawHL7 = profile.outbound?.rawHL7 || null;
-      const segment=name=>segments.find(item=>item.name===name) || {fields:[]};
-      const field=(name,target)=>segment(name).fields.find(item=>item.target===target);
-      const sourceTarget=(name,source,fallback)=>segment(name).fields.find(item=>item.source===source)?.target || fallback;
-      el("profileName").value=profile.name || "Perfil HL7"; el("profileInboundType").value=inbound.messageType || "OML^O21";
-      el("profileStrictValidation").checked = inbound.strictValidation !== false;
-      el('profileReceptionMode').value=inbound.receptionMode || (!inbound.schema && inbound.strictValidation===false ? 'PERMISSIVE' : 'CONTRACT');
-      el('profileStrictValidation').disabled=el('profileReceptionMode').value!=='CONTRACT';
-      protocolLearningPending=el('profileReceptionMode').value==='LEARN';
-      setProtocolPath("profilePatientId",mappings,"patient.id","PID-3"); setProtocolPath("profileOrderId",mappings,"order.id","ORC-2, OBR-2"); setProtocolPath("profileSampleId",mappings,"sample.id","SPM-2, OBR-3, ORC-3"); setProtocolPath("profileTestCode",mappings,"test.code","OBR-4.1"); setProtocolPath("profileTestName",mappings,"test.name","OBR-4.2");
-      el("profileMessageType").value=event.messageType || `${field("MSH","MSH-9.1")?.value || "ORU"}^${field("MSH","MSH-9.2")?.value || "R01"}`; el("profileVersion").value=event.version || field("MSH","MSH-12")?.value || "2.5.1";
-      el("profileResultValue").value=sourceTarget("OBX","result.value","OBX-5"); el("profileResultUnit").value=sourceTarget("OBX","result.unit","OBX-6"); el("profileResultCode").value=sourceTarget("OBX","result.code","OBX-3.1");
-      const privateSegment=segments.find(item=>/^Z/.test(item.name)); el("profileZSegment").value=privateSegment?.fields?.[0]?.target || "";
-      if (inbound.schema?.formatVersion === 2) {
-          const inboundSegments = (inbound.schema.segments || []).map(item => item.name).filter(Boolean);
-          if (inboundSegments.length) protocolSegmentOrder = [...new Set(inboundSegments)];
-      }
-      
-      const z = el("profileZSegment").value;
-      if (z) {
-          const seg = z.split("-")[0];
-          if (!protocolSegmentOrder.includes(seg)) protocolSegmentOrder.push(seg);
-      }
-      window.basicHL7.load(profile);
-      triggerAutoPreview();
-      updateSemanticBadges();
-    }
-    function resetProtocolProfile() {
-      protocolEditorDirty=false;protocolEditorGeneration++;
-      el('profileSaveState').textContent='';
-      window.editingProfileId = null;
-      window.savedProtocolDefinition=null;
-      window.generatedOutboundDefinition=null;
-      el('useAdvancedOutbound').checked=false;
-      el('advancedOutbound').value='';
-      if (el("saveProfileButton")) el("saveProfileButton").textContent = "Guardar perfil nuevo";
-      window.savedInboundSchema = null;
-      window.savedOutboundSchema = null;
-      window.savedInboundRawHL7 = null;
-      window.savedOutboundRawHL7 = null;
-      window.strictRequiredFields = [];
-      el("profileStrictValidation").checked = true;
-      el('profileReceptionMode').value='CONTRACT';el('profileStrictValidation').disabled=false;protocolLearningPending=false;
-      el("profileName").value="Perfil ORU estándar"; el("profileInboundType").value="OML^O21"; el("profileMessageType").value="ORU^R01"; el("profileVersion").value="2.5.1";
-      el("profilePatientId").value="PID-3"; el("profileOrderId").value="ORC-2, OBR-2, OBR-3"; el("profileSampleId").value="SPM-2, OBR-3, ORC-3"; el("profileTestCode").value="OBR-4.1"; el("profileTestName").value="OBR-4.2";
-      el("profileResultValue").value="OBX-5"; el("profileResultUnit").value="OBX-6"; el("profileResultCode").value="OBX-3.1"; el("profileZSegment").value="";
-      window.basicHL7.reset();
-      protocolSegmentOrder = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM", "OBX"];
-      triggerAutoPreview();
-      updateSemanticBadges();
-    }
-    async function onProtocolAnalyzerChanged() { 
-        protocolEditorDirty=false;protocolEditorGeneration++;
-        window.editingProfileId = null;
-        if (el("saveProfileButton")) el("saveProfileButton").textContent = "Guardar perfil nuevo";
-        await loadProtocolProfiles(true); 
-        triggerAutoPreview();
-    }
-
-    async function activateProtocolProfile(id) {
-        const profile = (window.cachedProfiles || []).find(item => item.id === id);
-        if (!profile || profile.status === "ACTIVE") return;
-        if(id===window.editingProfileId && protocolEditorDirty){
-            if(confirm('Hay cambios sin guardar en esta versión. ¿Guardar una nueva revisión con estos cambios y activarla?'))await saveProtocolProfile();
-            return;
-        }
-        if (!confirm(`¿Activar ${profile.name} v${profile.version}? El perfil activo actual será archivado.`)) return;
-        try {
-            const analyzerId = el("profileAnalyzer").value;
-            const activated = await post(`/api/analyzers/${analyzerId}/protocol-profiles/${id}/activate`);
-            window.editingProfileId = null;
-            el("saveProfileButton").textContent = "Guardar perfil nuevo";
-            el("profileStatus").textContent = `${activated.name} v${activated.version} está activo para este analizador.`;
-            await loadProtocolProfiles(true);
-        } catch(error) {
-            el("profileStatus").textContent = error.message;
-        }
-    }
-
-    function renderProtocolProfileCard(profile) {
-        if(profile.status==='RETIRED')return '';
-        const active = profile.status === "ACTIVE";
-        const cardStyle = active
-            ? "position:relative; border:2px solid #217a53; background:#f0f7f4"
-            : "position:relative";
-        const statusStyle = active
-            ? "background:#217a53; color:white; padding:3px 7px; border-radius:10px"
-            : "background:#e9eef0; color:#64747c; padding:3px 7px; border-radius:10px";
-        const activateButton = active ? "" : `<button type="button" style="padding:2px 8px; font-size:11px; background:#217a53" onclick="activateProtocolProfile('${profile.id}')">✓ Activar</button>`;
-        return `<div class="card" style="${cardStyle}">
-            <strong>${esc(profile.name)} v${profile.version}</strong>
-            <span style="${statusStyle}">${active ? "ACTIVO" : esc(profile.status)}</span>
-            ${active ? '<div class="mini" style="color:#217a53;font-weight:bold;margin-top:4px">Este es el contrato utilizado actualmente por el analizador.</div>' : ''}
-            <div class="mini">Entrada: ${esc(profile.inbound?.messageType||"-")} | Salida: ${esc(Object.values(profile.outbound?.events||{})[0]?.messageType||"-")}</div>
-            <div style="margin-top:10px; display:flex; gap:5px; flex-wrap:wrap">
-                ${activateButton}
-                <button type="button" class="ghost" style="padding:2px 8px; font-size:11px" onclick="editProtocolProfile('${profile.id}')">✏️ Editar</button>
-                <button type="button" class="ghost" style="padding:2px 8px; font-size:11px; color:red" onclick="deleteProtocolProfile('${profile.id}')">🗑️ Eliminar</button>
-            </div>
-        </div>`;
-    }
-
-    function ensureProtocolProfileLoaded() {
-        const id=el('profileAnalyzer').value;
-        if(protocolLearningPending && !protocolEditorDirty && loadingProtocolAnalyzerId!==id && analyzerList.find(a=>a.id===id)?.activeProtocolProfileId!==window.editingProfileId)return loadProtocolProfiles(true);
-        if(id && !protocolEditorDirty && loadedProtocolAnalyzerId!==id && loadingProtocolAnalyzerId!==id)return loadProtocolProfiles(true);
-    }
-
-    async function loadProtocolProfiles(hydrate=false) { 
-        const analyzerId=el('profileAnalyzer').value;
-        if(!analyzerId)return;
-        const requestSequence=++protocolRequestSequence;
-        const editorGeneration=protocolEditorGeneration;
-        if(hydrate)loadingProtocolAnalyzerId=analyzerId;
-        try { 
-            const profiles=(await get(`/api/analyzers/${encodeURIComponent(analyzerId)}/protocol-profiles`)).filter(p=>p.status!=='RETIRED');
-            if(analyzerId!==el('profileAnalyzer').value || requestSequence!==protocolRequestSequence)return;
-            const active=profiles.find(p=>p.status==="ACTIVE"); 
-            window.cachedProfiles = profiles;
-            if (hydrate && editorGeneration===protocolEditorGeneration) {
-                const saved=active || profiles.filter(p=>p.status==='DRAFT').sort((a,b)=>b.version-a.version)[0];
-                if (saved) {
-                    hydrateProtocolProfile(saved);window.editingProfileId=saved.id;
-                    el('saveProfileButton').textContent=`Actualizar ${saved.name} v${saved.version}`;
-                    el("profileStatus").textContent=`${active ? 'Perfil activo' : 'Borrador guardado'} cargado: ${saved.name} v${saved.version}. Guardar creará una nueva revisión.`;
-                } else { resetProtocolProfile(); el("profileStatus").textContent="Este analizador no tiene un perfil HL7 guardado todavía."; }
-                loadedProtocolAnalyzerId=analyzerId;
-            } 
-            el("profileVersions").innerHTML=profiles.map(renderProtocolProfileCard).join("") || '<div class="custom-map-empty">Este analizador aún no tiene perfiles versionados.</div>'; 
-        } catch(error) { if(analyzerId===el('profileAnalyzer').value)el("profileStatus").textContent=error.message; }
-        finally { if(loadingProtocolAnalyzerId===analyzerId)loadingProtocolAnalyzerId=null; }
-    }
-
     async function createSample() {
       try {
         await post("/api/manual-samples", {
@@ -814,6 +363,7 @@
       el("cfgListenPort").value = template.port;
       el("cfgMode").value = template.mode;
       el("cfgTests").value = template.tests;
+      toggleProfileControls();
       el("configStatus").textContent = "Plantilla aplicada. Revisa identidad, puertos y destino antes de guardar.";
     }
 
@@ -829,8 +379,7 @@
         listenPort: Number(el("cfgListenPort").value || 0),
         resultDestinationHost: el("cfgDestinationHost").value,
         resultDestinationPort: Number(el("cfgDestinationPort").value || 0),
-        supportedTests: el("cfgTests").value ? el("cfgTests").value.split(",").map(x => x.trim()).filter(Boolean) : [],
-        acceptUnknownTests: el("cfgAcceptUnknownTests").checked,
+        ...(protocol === 'ASTM' ? {supportedTests: el("cfgTests").value.split(",").map(x => x.trim()).filter(Boolean)} : {}),
         mode: el("cfgMode").value
       };
     }
@@ -847,10 +396,10 @@
       el("cfgDestinationHost").value = analyzer.resultDestinationHost;
       el("cfgDestinationPort").value = analyzer.resultDestinationPort;
       el("cfgTests").value = (analyzer.supportedTests || []).join(",");
-      el("cfgAcceptUnknownTests").checked = Boolean(analyzer.acceptUnknownTests);
       el("cfgMode").value = analyzer.mode;
       el("cfgExistingAnalyzer").value = analyzer.id;
       el("configStatus").textContent = `Editando ${analyzer.id}`;
+      toggleProfileControls();
     }
 
     function loadSelectedAnalyzer() {
@@ -865,7 +414,7 @@
       el("cfgVendor").value = "";
       el("cfgProfile").value = "GENERIC";
       el("cfgTests").value = "";
-      el("cfgAcceptUnknownTests").checked = false;
+      toggleProfileControls();
       el("configStatus").textContent = "Nuevo analizador: aplica una plantilla o completa los datos.";
     }
 
@@ -1057,10 +606,7 @@
       const configuredSelection = el("cfgExistingAnalyzer").value;
       el("cfgExistingAnalyzer").innerHTML = `<option value="">Nuevo analizador…</option>` + analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.id)}</option>`).join("");
       if (configuredSelection) el("cfgExistingAnalyzer").value = configuredSelection;
-      const profileSelection = el("profileAnalyzer").value;
-      el("profileAnalyzer").innerHTML = analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.id)}</option>`).join("");
-      if (analyzers.some(a=>a.id===profileSelection)) el("profileAnalyzer").value = profileSelection;
-      ensureProtocolProfileLoaded();
+      window.equipmentProfileUI?.updateAnalyzers(analyzers);
       el("mAnalyzers").textContent = dash.analyzerCount;
       el("mListeners").textContent = dash.activeListenerCount;
       el("mPending").textContent = dash.pendingOrderCount;
@@ -1114,7 +660,7 @@
         </td>
         <td>
           ${actionButtons(o)}
-          ${o.pendingCatalogStudies?.length ? `<div class="hint">Recibida. Falta configurar resultados para: ${esc(o.pendingCatalogStudies.join(', '))}. Asígnalos en Catálogo de estudios y vuelve a procesar.</div>` : ""}
+          ${o.pendingCatalogStudies?.length ? `<div class="hint">Recibida. Falta configurar resultados para: ${esc(o.pendingCatalogStudies.join(', '))}. Configúralos en el perfil del equipo y vuelve a procesar.</div>` : ""}
           ${o.clinicalInfo ? `<div class="hint">Clinica: ${esc(o.clinicalInfo)}</div>` : ""}
           ${o.observations?.length ? `<div class="hint">Obs: ${esc(o.observations.join(" | "))}</div>` : ""}
           ${Object.keys(o.customFields || {}).length ? `<details class="hint"><summary>Campos propios del equipo (${Object.keys(o.customFields).length})</summary>${Object.entries(o.customFields).map(([key,value]) => `<div><code>${esc(key)}</code>: ${esc(value)}</div>`).join("")}</details>` : ""}
@@ -1140,352 +686,15 @@
       messageContainer.scrollTop = messageScrollTop;
     }
 
+    function toggleProfileControls(){const hl7=el('cfgProtocol').value==='HL7';el('cfgASTMTests').hidden=hl7;el('cfgProfileHint').hidden=!hl7;}
+    el('cfgProtocol').addEventListener('change',toggleProfileControls);
+    toggleProfileControls();
     refresh();
     setInterval(refresh, 4000);
-    // Semantic contracts and message previews.
-    let protocolSegmentOrder = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM", "OBX"];
-    let previewTimeout = null;
-
-    window.strictRequiredFields = [];
-    function openValidatorModal() {
-        el('validatorText').value = "";
-        el('validatorModal').style.display = 'block';
-    }
-    
-    window.currentSemanticTree = null;
-    window.savedInboundSchema = null;
-    window.savedOutboundSchema = null;
-    window.savedInboundRawHL7 = null;
-    window.savedOutboundRawHL7 = null;
-
-    function closeValidatorModal() {
-        el('validatorModal').style.display = 'none';
-        el('semanticTreeContainer').style.display = 'none';
-        el('btnAnalyzeSemantic').style.display = 'inline-block';
-        el('btnSaveInbound').style.display = 'none';
-        el('btnSaveOutbound').style.display = 'none';
-        el('validatorText').value = '';
-    }
-
-    async function generateSemanticTree() {
-        const text = el('validatorText').value.trim();
-        if (!text) return;
-        const analyzerId = el("profileAnalyzer").value;
-        if (!analyzerId) {
-            alert("Selecciona primero el analizador al que pertenecerá este contrato.");
-            return;
-        }
-        const button = el('btnAnalyzeSemantic');
-        button.disabled = true;
-        button.textContent = "Analizando…";
-        try {
-            const inferred = await post(`/api/analyzers/${analyzerId}/protocol-profiles/infer`, {rawMessage:text});
-            el('validatorText').value=inferred.rawMessage || text;
-            window.currentSemanticTree = inferred.schema;
-            el('semanticTreeCode').value = JSON.stringify(inferred.schema, null, 2);
-            el('semanticTreeContainer').style.display = 'block';
-            showAnalyzedContractPreview(inferred.schema, text, inferred.preview);
-            el('btnAnalyzeSemantic').style.display = 'none';
-            el('btnSaveInbound').style.display = 'inline-block';
-            el('btnSaveOutbound').style.display = 'inline-block';
-        } catch(error) {
-            alert(error.message);
-        } finally {
-            button.disabled = false;
-            button.textContent = "Analizar Muestra 🧠";
-        }
-    }
-
-    function refreshEditedContractPreview() {
-        try {
-            const schema = JSON.parse(el('semanticTreeCode').value);
-            showAnalyzedContractPreview(schema, el('validatorText').value);
-        } catch (_) {
-            el('inferredContractPreview').textContent = "El JSON aún no es válido.";
-        }
-    }
-
-    function showAnalyzedContractPreview(schema, rawMessage="", serverPreview="") {
-        const rendered = (rebuildHL7FromSchema(schema) || serverPreview || schema?.preview || "").replace(/\r/g, "\n");
-        el('inferredContractPreview').textContent = rendered || "No fue posible construir la vista previa.";
-        if (el('previewInboundBox')) {
-            const base = rawMessage ? "MENSAJE BASE\n" + rawMessage.replace(/\r/g,"\n") + "\n\n" : "";
-            el('previewInboundBox').textContent = "VISTA PREVIA (AÚN NO GUARDADA)\n\n" + base + "CONTRATO APLICADO\n" + rendered;
-        }
-    }
-    el('semanticTreeCode').addEventListener('input', refreshEditedContractPreview);
-
-    function saveSemanticTree(direction) {
-        let treeStr = el('semanticTreeCode').value;
-        try {
-            window.currentSemanticTree = JSON.parse(treeStr);
-        } catch(e) {
-            alert("El JSON tiene errores de sintaxis. Revisa y corrige antes de guardar.");
-            return;
-        }
-
-        if (!window.currentSemanticTree) return;
-        const inferredType = window.currentSemanticTree.messageType || "";
-        const inferredSegments = (window.currentSemanticTree.segments || []).map(item => item.name).filter(Boolean);
-        
-        if (direction === 'inbound') {
-            window.savedInboundSchema = window.currentSemanticTree;
-            // Guardar el HL7 crudo original que el usuario pegó
-            window.savedInboundRawHL7 = el('validatorText').value.trim() || null;
-            window.strictRequiredFields = requiredPathsFromContract(window.currentSemanticTree);
-            if (inferredType) el("profileInboundType").value = inferredType;
-            if (inferredSegments.length) protocolSegmentOrder = [...new Set(inferredSegments)];
-            applySuggestedInboundMappings(window.currentSemanticTree);
-            window.basicHL7.updateExamples();
-            alert("Contrato Inbound guardado en memoria (" + el("profileInboundType").value + "). Haz clic en 'Guardar Perfil' para persistirlo.");
-        } else {
-            window.savedOutboundSchema = window.currentSemanticTree;
-            window.savedOutboundRawHL7 = el('validatorText').value.trim() || null;
-            const eventName=window.basicHL7.currentEvent();
-            const outbound=structuredClone(window.generatedOutboundDefinition || window.savedProtocolDefinition?.outbound || {});
-            outbound.events ||= {};
-            outbound.events[eventName]={...(outbound.events[eventName] || {}),messageType:inferredType,
-                schema:window.currentSemanticTree,segments:structuredSchemaToOutboundSegments(window.currentSemanticTree)};
-            if(Object.keys(outbound.events).length===1)outbound.schema=window.currentSemanticTree;
-            outbound.rawHL7=window.savedOutboundRawHL7;
-            window.generatedOutboundDefinition=outbound;
-            el('advancedOutbound').value=JSON.stringify(outbound,null,2);
-            window.basicHL7.readOutbound(outbound);
-            if (inferredType) el("profileMessageType").value = inferredType;
-            
-            // Conservar el orden de segmentos del contrato de salida
-            const segOrder = ["MSH","EVN","PID","PV1","ORC","OBR","TXA","OBX","SPM"];
-            const allSegs = inferredSegments.length ? inferredSegments : Object.keys(window.currentSemanticTree);
-            const ordered = segOrder.filter(s => allSegs.includes(s)).concat(allSegs.filter(s => !segOrder.includes(s)));
-            
-            protocolSegmentOrder.length = 0;
-            ordered.forEach(s => protocolSegmentOrder.push(s));
-            
-            triggerAutoPreview();
-            
-            alert("Contrato Outbound aplicado al perfil (" + el("profileMessageType").value + "). Haz clic en 'Guardar Perfil' para persistirlo.");
-        }
-        markProtocolEdited();
-        triggerAutoPreview();
-        closeValidatorModal();
-        updateSemanticBadges();
-    }
-
-    function contractHasField(schema, segmentName, fieldNumber) {
-        const segment = (schema.segments || []).find(item => item.name === segmentName);
-        return Boolean(segment?.fields?.[String(fieldNumber)]);
-    }
-
-    function requiredPathsFromContract(schema) {
-        if (!schema) return [];
-        if (schema.formatVersion !== 2) {
-            return Object.values(schema).flatMap(fields => Object.entries(fields || {}).filter(([,rule]) => rule.required).map(([path]) => path));
-        }
-        const paths = [];
-        for (const segment of schema.segments || []) {
-            for (const [fieldNumber, field] of Object.entries(segment.fields || {})) {
-                if (!field.required) continue;
-                let addedComponent = false;
-                for (const repetition of field.repetitions || []) {
-                    for (const componentNumber of Object.keys(repetition.components || {})) {
-                        if (field.composite) {
-                            paths.push(`${segment.name}-${fieldNumber}.${componentNumber}`);
-                            addedComponent = true;
-                        }
-                    }
-                }
-                if (!addedComponent) paths.push(`${segment.name}-${fieldNumber}`);
-            }
-        }
-        return [...new Set(paths)];
-    }
-
-    function applySuggestedInboundMappings(schema) {
-        window.basicHL7.suggestInbound(schema);
-    }
-    
-    function updateSemanticBadges() {
-        const mode=el('profileReceptionMode').value;
-        el('profileReceptionStatus').textContent=mode==='LEARN' ? 'Al guardar y activar, se abre la recepción y se espera el primer HL7 válido. Se guardará una revisión semántica editable, conservando la salida. Luego continuará en modo permisivo.' : mode==='PERMISSIVE' ? 'Recibe HL7 válido sin exigir contrato ni catálogo. Las órdenes van a la cola; otros tipos quedan en Mensajes. Enviar resultados requiere configurar la salida y los exámenes.' : 'Aplica el contrato de entrada y sus reglas. Para activar este modo se requieren entrada y salida completas.';
-        el('badgeInbound').style.display = window.savedInboundSchema ? 'inline-block' : 'none';
-        el('badgeOutbound').style.display = window.savedOutboundSchema ? 'inline-block' : 'none';
-        
-        if (el('previewInboundBox')) {
-            if (window.savedInboundSchema) {
-                const base = window.savedInboundRawHL7 ? "MENSAJE BASE\n" + window.savedInboundRawHL7.replace(/\r/g,"\n") + "\n\n" : "";
-                el('previewInboundBox').textContent = base + "CONTRATO APLICADO\n" + rebuildHL7FromSchema(window.savedInboundSchema).replace(/\r/g,"\n");
-            } else {
-                el('previewInboundBox').textContent = mode==='LEARN' ? 'Esperando el primer mensaje HL7 externo después de guardar y activar el perfil.' : mode==='PERMISSIVE' ? 'Sin contrato de entrada. Al guardar y activar, se habilita la recepción permisiva.' : 'Sin contrato de entrada. Genera una base semántica o selecciona modo permisivo / aprendizaje para recibir sin contrato.';
-            }
-        }
-        if (el('profilePreview') && window.savedOutboundSchema) {
-            el('profilePreview').style.display = 'block';
-            el('profilePreview').textContent = buildOutboundPreviewText();
-        } else if (el('profilePreview') && !window.savedOutboundSchema) {
-            el('profilePreview').textContent = "(Sin contrato Outbound cargado.)";
-        }
-    }
-
-    function buildOutboundPreviewText(generatedMessage="") {
-        const sections = [];
-        if (window.savedOutboundRawHL7) {
-            sections.push("MENSAJE BASE OUTBOUND\n" + window.savedOutboundRawHL7.replace(/\r/g,"\n"));
-        }
-        if (window.savedOutboundSchema) {
-            sections.push("CONTRATO OUTBOUND APLICADO\n" + rebuildHL7FromSchema(window.savedOutboundSchema).replace(/\r/g,"\n"));
-        }
-        if (generatedMessage) {
-            sections.push("MENSAJE GENERADO CON DATOS DE PRUEBA\n" + generatedMessage.replace(/\r/g,"\n"));
-        }
-        return sections.join("\n\n") || "(Sin contrato Outbound cargado.)";
-    }
-
-    function rebuildHL7FromSchema(schema) {
-        if (schema?.formatVersion === 2) return rebuildStructuredHL7(schema);
-        // Reconstruye un esqueleto HL7 legible desde el schema JSON
-        const lines = [];
-        const segOrder = ["MSH","EVN","PID","PV1","ORC","OBR","TXA","OBX","SPM"];
-        const allSegs = Object.keys(schema);
-        const ordered = segOrder.filter(s => allSegs.includes(s)).concat(allSegs.filter(s => !segOrder.includes(s)));
-        
-        for (const segName of ordered) {
-            const fields = schema[segName];
-            // Encontrar el índice máximo de campo en este segmento
-            let maxIdx = 0;
-            for (const key of Object.keys(fields)) {
-                const match = key.match(/-(\d+)/);
-                if (match) maxIdx = Math.max(maxIdx, parseInt(match[1]));
-            }
-            const row = [segName];
-            for (let i = 1; i <= maxIdx; i++) {
-                // Buscar subcomponentes
-                const subs = Object.keys(fields).filter(k => k.startsWith(segName + "-" + i + "."));
-                const plain = fields[segName + "-" + i];
-                if (subs.length > 0) {
-                    let maxSub = 0;
-                    subs.forEach(s => { const m = s.match(/\.(\d+)$/); if(m) maxSub = Math.max(maxSub, parseInt(m[1])); });
-                    const parts = [];
-                    for (let j = 1; j <= maxSub; j++) {
-                        const sub = fields[segName + "-" + i + "." + j];
-                        parts.push(sub ? "<" + (sub.semantic || sub.type || "?") + ">" : "");
-                    }
-                    row.push(parts.join("^"));
-                } else if (plain) {
-                    let display = "<" + (plain.semantic || plain.type || "?") + ">";
-                    if (plain.allowed) display = plain.allowed.join("/");
-                    row.push(display);
-                } else {
-                    row.push("");
-                }
-            }
-            lines.push(row.join("|"));
-        }
-        return lines.join("\n");
-    }
-
-    function rebuildStructuredHL7(schema) {
-        const delimiters = schema.delimiters || {};
-        const fs = delimiters.field || "|", cs = delimiters.component || "^";
-        const rs = delimiters.repetition || "~", ss = delimiters.subcomponent || "&";
-        const placeholder = rule => {
-            if (!rule) return "";
-            if (Object.prototype.hasOwnProperty.call(rule, "const")) return String(rule.const);
-            const semantic = rule.semantic || rule.datatype || "VALOR";
-            if (rule.allowed?.length) return `<${semantic}:${rule.allowed.join("/")}>`;
-            const suffix = rule.datatype === "DT" ? ":YYYYMMDD" : (["TS","DTM"].includes(rule.datatype) ? ":YYYYMMDDHHMMSS" : "");
-            return `<${semantic}${suffix}>`;
-        };
-        const renderField = field => (field?.repetitions || []).map(rep => {
-            const components = rep.components || {};
-            const maxComponent = Math.max(0, ...Object.keys(components).map(Number));
-            const rendered = [];
-            for (let c=1; c<=maxComponent; c++) {
-                const component = components[String(c)];
-                if (!component) { rendered.push(""); continue; }
-                if (component.subcomponents) {
-                    const maxSub = Math.max(0, ...Object.keys(component.subcomponents).map(Number));
-                    const subs = [];
-                    for (let s=1; s<=maxSub; s++) subs.push(placeholder(component.subcomponents[String(s)]));
-                    rendered.push(subs.join(ss));
-                } else rendered.push(placeholder(component));
-            }
-            return rendered.join(cs);
-        }).join(rs);
-        return (schema.segments || []).map(segment => {
-            const fields = segment.fields || {};
-            const maxField = Math.max(segment.name === "MSH" ? 2 : 0, ...Object.keys(fields).map(Number));
-            const row = [segment.name];
-            if (segment.name === "MSH") row.push(cs + rs + (delimiters.escape || "\\") + ss);
-            const start = segment.name === "MSH" ? 3 : 1;
-            for (let f=start; f<=maxField; f++) row.push(renderField(fields[String(f)]));
-            return row.join(fs);
-        }).join("\r") + "\r";
-    }
-
-    function structuredSchemaToOutboundSegments(schema) {
-        const dynamicSource = (semantic, segmentName) => {
-            const common = {
-                SENDING_APPLICATION:{source:"analyzer.id"}, MESSAGE_DATETIME:{source:"system.timestamp"},
-                MESSAGE_CONTROL_ID:{source:"system.messageId"}, PATIENT_IDENTIFIER:{source:"patient.id"},
-                SENDING_FACILITY:{source:"analyzer.vendor"}, RECEIVING_APPLICATION:{source:"inbound.MSH-3"}, RECEIVING_FACILITY:{source:"inbound.MSH-4"},
-                FAMILY_NAME:{source:"patient.name",transform:"component1"}, GIVEN_NAME:{source:"patient.name",transform:"component2"},
-                BIRTH_DATE:{source:"patient.birthDate"}, ADMINISTRATIVE_SEX:{source:"patient.sex"}, PATIENT_CLASS:{source:"visit.type"},
-                PLACER_ORDER_NUMBER:{source:"order.id"}, FILLER_ORDER_NUMBER:{source:"order.fillerId"},
-                SPECIMEN_IDENTIFIER:{source:"sample.id"}, TEST_CODE:{source:"test.code"}, TEST_NAME:{source:"test.name"},
-                SPECIMEN_TYPE_CODE:{source:"sample.code"}, SPECIMEN_TYPE_NAME:{source:"sample.name"},
-                SET_ID:{source:"counter"}, OBSERVATION_VALUE:{source:"result.value"}, UNITS:{source:"result.unit"},
-                REFERENCE_RANGE:{source:"result.referenceRange"}, ABNORMAL_FLAGS:{source:"result.abnormalFlag"},
-                VALUE_TYPE:{source:"result.valueType"}, OBSERVATION_STATUS:{source:"result.status"}
-            };
-            if (segmentName === "OBX" && semantic === "OBSERVATION_IDENTIFIER") return {source:"result.code"};
-            if (segmentName === "OBX" && semantic === "OBSERVATION_TEXT") return {source:"result.name"};
-            return common[semantic] || null;
-        };
-        const fieldFromRule = (target, rule, segmentName) => {
-            if (Object.prototype.hasOwnProperty.call(rule, "const")) return {target,sourceType:"fixed",value:String(rule.const)};
-            if (rule.source) return {target,source:rule.source,required:!!rule.required,...(rule.transform ? {transform:rule.transform} : {}),...(rule.default !== undefined ? {default:rule.default} : {})};
-            if(['PATIENT_IDENTIFIER','FAMILY_NAME','GIVEN_NAME'].includes(rule.semantic) && Number(/\[(\d+)\]/.exec(target)?.[1] || 1)>1)return {target,source:'inbound.'+target,required:!!rule.required};
-            const dynamic = dynamicSource(rule.semantic, segmentName);
-            if (dynamic) return {target,...dynamic,required:!!rule.required,...(rule.default !== undefined ? {default:rule.default} : ['VALUE_TYPE','OBSERVATION_STATUS','SENDING_FACILITY'].includes(rule.semantic)?{default:String(rule.example || '')}:{})};
-            // An example is never an implicit fixed value. Unknown fields read
-            // from the current order; only an explicit const pins a value.
-            return {target,source:'inbound.'+target,required:false};
-        };
-        return (schema.segments || []).map(segment => {
-            const output = {name:segment.name,fields:[]};
-            if (segment.name === "OBX" && segment.max === "*") output.repeatBy = "results";
-            for (const [fieldNumber, field] of Object.entries(segment.fields || {})) {
-                if (segment.name === "MSH" && fieldNumber === "2") continue;
-                for (const repetition of field.repetitions || []) {
-                    const repIndex = repetition.index || 1;
-                    for (const [componentNumber, component] of Object.entries(repetition.components || {})) {
-                        if (component.subcomponents) {
-                            for (const [subNumber, rule] of Object.entries(component.subcomponents)) {
-                                const target = `${segment.name}-${fieldNumber}[${repIndex}].${componentNumber}.${subNumber}`;
-                                output.fields.push(fieldFromRule(target, rule, segment.name));
-                            }
-                        } else {
-                            let target = `${segment.name}-${fieldNumber}`;
-                            if ((field.maxRepetitions || 1) > 1) target += `[${repIndex}]`;
-                            if (field.composite) target += `.${componentNumber}`;
-                            output.fields.push(fieldFromRule(target, component, segment.name));
-                        }
-                    }
-                }
-            }
-            return output;
-        });
-    }
-
-
-    function triggerAutoPreview() {
-        clearTimeout(previewTimeout);
-        previewTimeout = setTimeout(() => {
-            if(el("profileAnalyzer").value) {
-               previewProtocolProfile({automatic:true});
-            }
-        }, 600);
-    }
   </script>
+  <link rel="stylesheet" href="/static/workshop.css">
+  <link rel="stylesheet" href="/static/equipment-profile.css">
+  <script src="/static/equipment-profile-model.js"></script>
+  <script src="/static/equipment-profile.js"></script>
 </body>
 </html>

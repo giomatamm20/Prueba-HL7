@@ -1,0 +1,21 @@
+{
+  "pasa": true,
+  "tablas": {
+    "analyzers": {
+      "pasa": true,
+      "registros_previos": 2
+    },
+    "orders": {
+      "pasa": true,
+      "registros_previos": 9
+    },
+    "study_catalog_revisions": {
+      "pasa": true,
+      "registros_previos": 1
+    },
+    "analyzer_protocol_profiles": {
+      "pasa": true,
+      "registros_previos": 3
+    }
+  }
+}

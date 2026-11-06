@@ -1,0 +1,10 @@
+Ejecucion real: 2026-11-06
+Directorio: services/analyzer-simulator-api
+Comando: unittest.defaultTestLoader.discover('tests') con Python 3.12
+Ran 128 tests in 61.562s
+OK
+
+Incluye la prueba reforzada:
+test_real_send_uses_embedded_catalog_and_old_order_keeps_its_results
+Comprueba resultado, plantilla ZQA y perfil de salida al activar otro perfil
+y al retirar del historial el perfil asociado a la orden.

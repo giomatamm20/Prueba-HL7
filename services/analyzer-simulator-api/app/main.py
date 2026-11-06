@@ -11,6 +11,7 @@ from .listeners import ListenerManager
 from .configuration import port_set
 from .study_catalog import bind_studies, dynamic_outbound, generate_results, infer_studies, validate_catalog
 from .profile_builder import build_profile_message
+from .profile_validation import flexible_profile, validate_outbound
 from .pacs import (
     PacsSecureLinkError,
     decrypt_legacy_secure_payload,
@@ -76,6 +77,7 @@ class CatalogAssignmentRequest(BaseModel):
     unknownStudyPolicy: str = "BLOCK"
     genericStudyCode: str | None = None
     configureOutbound: bool = False
+    alignOutbound: bool = False
 
 
 class RegenerateRequest(BaseModel):
@@ -127,6 +129,34 @@ class ProtocolProfileRequest(BaseModel):
 
 class HL7ContractInferRequest(BaseModel):
     rawMessage: str = Field(min_length=4)
+    strictValidation: bool = False
+    includeOrders: bool = False
+
+
+class FlexibleProfileRequest(ProtocolProfileRequest):
+    profileId: str | None = None
+
+
+class ProtocolProfilePreviewRequest(ProtocolProfileRequest):
+    eventType: str = "RESULT_FINAL"
+
+
+class EquipmentProfileRequest(ProtocolProfileRequest):
+    catalog: dict = Field(default_factory=lambda: {'studies': []})
+    expectedVersion: int | None = None
+
+
+class EquipmentProfilePreviewRequest(BaseModel):
+    profile: dict
+    eventType: str = 'RESULT_FINAL'
+    scenario: str = 'NORMAL'
+
+
+class EquipmentProfileInferRequest(BaseModel):
+    profile: dict
+    rawMessage: str = Field(min_length=4)
+    direction: str = 'auto'
+    eventType: str = 'RESULT_FINAL'
 
 
 class EmitEventRequest(BaseModel):
@@ -224,6 +254,43 @@ def update_analyzer(analyzer_id: str, payload: AnalyzerConfigRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get('/api/analyzers/{analyzer_id}/equipment-profile')
+def equipment_profile(analyzer_id: str) -> dict:
+    try:
+        return engine.equipment_profile(analyzer_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.put('/api/analyzers/{analyzer_id}/equipment-profile')
+def save_equipment_profile(analyzer_id: str, payload: EquipmentProfileRequest) -> dict:
+    try:
+        profile = engine.save_equipment_profile(analyzer_id, payload.model_dump(exclude={'expectedVersion'}), payload.expectedVersion)
+        listener_manager.sync(analyzer_id)
+        return profile
+    except ValueError as exc:
+        raise HTTPException(status_code=409 if str(exc).startswith('El perfil cambió') else 400, detail=str(exc)) from exc
+
+
+@app.post('/api/analyzers/{analyzer_id}/equipment-profile/preview')
+def preview_equipment_profile(analyzer_id: str, payload: EquipmentProfilePreviewRequest) -> dict:
+    try:
+        return engine.preview_equipment_profile(analyzer_id, payload.profile, payload.eventType, payload.scenario)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post('/api/analyzers/{analyzer_id}/equipment-profile/infer')
+def infer_equipment_profile(analyzer_id: str, payload: EquipmentProfileInferRequest) -> dict:
+    try:
+        from .equipment_profile import apply_example
+        if analyzer_id not in engine.analyzers:
+            raise ValueError('Equipo inexistente')
+        return apply_example(payload.profile, payload.rawMessage, payload.direction, payload.eventType)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/analyzers/{analyzer_id}/protocol-profiles")
 def protocol_profiles(analyzer_id: str) -> list[dict]:
     try:
@@ -272,9 +339,9 @@ def activate_protocol_profile(analyzer_id: str, profile_id: str) -> dict:
 
 
 @app.post("/api/analyzers/{analyzer_id}/protocol-profiles/preview")
-def preview_protocol_profile(analyzer_id: str, payload: ProtocolProfileRequest) -> dict:
+def preview_protocol_profile(analyzer_id: str, payload: ProtocolProfilePreviewRequest) -> dict:
     try:
-        return engine.preview_protocol_profile(analyzer_id, payload.model_dump())
+        return engine.preview_protocol_profile(analyzer_id, payload.model_dump(exclude={"eventType"}), payload.eventType)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -282,7 +349,19 @@ def preview_protocol_profile(analyzer_id: str, payload: ProtocolProfileRequest) 
 @app.post("/api/analyzers/{analyzer_id}/protocol-profiles/infer")
 def infer_protocol_contract(analyzer_id: str, payload: HL7ContractInferRequest) -> dict:
     try:
-        return engine.infer_protocol_contract(analyzer_id, payload.rawMessage)
+        return engine.infer_protocol_contract(analyzer_id, payload.rawMessage, payload.strictValidation)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/analyzers/{analyzer_id}/protocol-profiles/flexible", status_code=201)
+def save_flexible_profile(analyzer_id: str, payload: FlexibleProfileRequest) -> dict:
+    try:
+        definition = flexible_profile(payload.model_dump(exclude={"profileId"}))
+        profile = (engine.update_protocol_profile(analyzer_id, payload.profileId, definition) if payload.profileId
+                   else engine.save_protocol_profile(analyzer_id, definition))
+        listener_manager.sync(analyzer_id)
+        return profile
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -308,7 +387,7 @@ def create_catalog(payload: dict) -> dict:
 @app.post("/api/catalogs/infer")
 def infer_catalog(payload: HL7ContractInferRequest) -> dict:
     try:
-        return infer_studies(payload.rawMessage)
+        return infer_studies(payload.rawMessage, allow_orders=payload.includeOrders)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -325,9 +404,20 @@ def preview_catalog(payload: dict) -> dict:
         if scenario not in {"NORMAL", *[n for s in definition["studies"] for n in s.get("scenarios", {})]}:
             raise ValueError("Escenario inexistente")
         results = generate_results(studies, scenario)
-        message, _ = build_profile_message({"outbound": dynamic_outbound()}, {"id": "PREVIEW"},
-            {"studies": studies, "sampleId": "SMP-TEST", "patientId": "P-TEST", "patientName": "PRUEBA^SINTETICA"}, results, "RESULT_FINAL", 0)
-        return {"results": results, "message": message}
+        profile={"outbound": dynamic_outbound()};analyzer={"id":"PREVIEW"};warnings=[];configured=False
+        if payload.get("analyzerId"):
+            analyzer=engine.analyzers.get(payload["analyzerId"])
+            if not analyzer:
+                raise ValueError("Seleccione un analizador existente")
+            active=engine.store.get_active_protocol_profile(analyzer["id"])
+            warnings=engine.catalog_protocol_issues(active, revision)
+            if not warnings:
+                profile=active;configured=True
+        order={"studies":studies,"sampleId":"SMP-TEST","orderId":"ORD-TEST","id":"PREVIEW",
+               "patientId":"P-TEST","patientName":"PRUEBA^SINTETICA"}
+        message, control_id = build_profile_message(profile, analyzer, order, results, "RESULT_FINAL", 0)
+        validate_outbound(message, profile, "RESULT_FINAL", control_id)
+        return {"results": results, "message": message, "usesConfiguredProfile":configured,"configurationWarnings":warnings}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -344,9 +434,17 @@ def revise_catalog(catalog_id: str, payload: dict) -> dict:
 def assign_catalog(analyzer_id: str, payload: CatalogAssignmentRequest) -> dict:
     try:
         assigned = engine.assign_catalog(analyzer_id, payload.revisionId, payload.unknownStudyPolicy,
-                                         payload.genericStudyCode, payload.configureOutbound)
+                                         payload.genericStudyCode, payload.configureOutbound, payload.alignOutbound)
         listener_manager.sync(analyzer_id)
         return assigned
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/analyzers/{analyzer_id}/configuration")
+def configuration_summary(analyzer_id: str) -> dict:
+    try:
+        return engine.configuration_summary(analyzer_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

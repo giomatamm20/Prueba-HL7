@@ -63,7 +63,7 @@ class GenericHL7EditorTests(unittest.TestCase):
     def editor(self, profile, actions=(), convert=False):
         static = Path(__file__).resolve().parents[1] / 'app/static'
         result = subprocess.run([shutil.which('node'), '-e', HARNESS], input=json.dumps({
-            'html': str(static / 'index.html'), 'basic': str(static / 'basic-hl7.js'), 'profile': profile, 'actions': actions, 'convert': convert}),
+            'html': str(Path(__file__).parent / 'fixtures/profile_editor_v2.html'), 'basic': str(static / 'basic-hl7.js'), 'profile': profile, 'actions': actions, 'convert': convert}),
             capture_output=True, text=True, encoding='utf-8', timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)

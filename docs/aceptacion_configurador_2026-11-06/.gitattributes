@@ -1,0 +1,2 @@
+# Preserve protocol segment terminators when cloning on any platform.
+*.hl7 -text whitespace=cr-at-eol

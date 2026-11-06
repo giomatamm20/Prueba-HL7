@@ -1,0 +1,249 @@
+<!-- Compatibility fixture for mapping definitions saved by the previous editor. Not served by the application. -->
+        <article class="panel protocol">
+          <p class="section-label">Diseñador de protocolo</p><h2>Configurar contrato HL7</h2>
+          <p class="hint">Genera la base desde un mensaje del equipo, ajusta los campos básicos y guarda el perfil. La vista previa se actualiza con los cambios.</p>
+          <div class="cols-2"><div><label>Analizador</label><select id="profileAnalyzer" onchange="onProtocolAnalyzerChanged()"></select></div><div><label for="profileName">Nombre del perfil</label><input id="profileName" value="Perfil ORU estándar"></div></div>
+
+          <section class="basic-hl7" aria-labelledby="basicHL7Title">
+            <h3 id="basicHL7Title">Campos básicos del equipo</h3>
+            <p class="hint">Después de generar la base desde un mensaje, revisa de dónde se lee cada dato y dónde se devuelve. Los campos de entrada y salida se configuran por separado.</p>
+            <p class="hint">Las ubicaciones pertenecen a este perfil y se pueden adaptar a cada equipo. Una ruta tiene el formato SEG-campo[repetición].componente.subcomponente; los índices empiezan en 1. En entrada, separa alternativas por coma; en salida, indica uno o varios destinos. Vacío omite ese dato en la salida. Los valores del ejemplo son solo una ayuda de lectura.</p>
+            <label for="basicHL7Event">Mensaje de salida que estás configurando</label><select id="basicHL7Event" onchange="window.basicHL7.selectEvent(this.value)"></select>
+            <div style="overflow-x:auto"><table class="basic-mapping-table"><thead><tr><th>Dato</th><th>Leer del mensaje recibido</th><th>Devolver en el resultado</th></tr></thead><tbody id="basicHL7Rows"></tbody></table></div>
+            <details><summary>Añadir otro dato del equipo</summary>
+              <label for="basicHL7NewSource">Dato</label><select id="basicHL7NewSource">
+                <option value="patient.birthDate">Fecha de nacimiento</option><option value="patient.sex">Sexo</option><option value="patient.address">Dirección</option>
+                <option value="sample.code">Tipo de muestra: código</option><option value="sample.name">Tipo de muestra: nombre</option>
+                <option value="visit.number">Número de visita</option><option value="visit.type">Tipo de visita</option>
+                <option value="order.priority">Prioridad</option><option value="order.clinicalInfo">Información clínica</option>
+                <option value="custom">Dato propio del equipo</option>
+              </select>
+              <label for="basicHL7NewKey">Clave para un dato propio</label><input id="basicHL7NewKey" placeholder="Ej. referenciaExterna">
+              <label for="basicHL7NewLabel">Nombre para mostrar (opcional)</label><input id="basicHL7NewLabel" placeholder="Ej. Referencia externa">
+              <button type="button" class="ghost" onclick="window.basicHL7.addFieldFromForm()">+ Añadir dato</button>
+              <p id="basicHL7FieldStatus" class="hint" role="status"></p>
+            </details>
+            <p class="hint">Guarda el perfil para aplicar estos cambios al equipo. Los valores leídos del ejemplo se muestran como ayuda; la respuesta conserva los datos de cada orden real.</p>
+          </section>
+
+          <div class="legacy-mapping" id="legacyMapping">
+             <input id="profileMessageType" value="ORU^R01">
+             <input id="profileVersion" value="2.5.1">
+             <input id="profileInboundType" value="OML^O21">
+             <input id="profileResultDocument" value="">
+             <input id="profileResultObxType" value="NM">
+             <input id="profileZSegment" value="">
+             <input id="profileFixedMapping" value="{}">
+          </div>
+
+          <div class="protocol-toolbar">
+              <div><label for="profileReceptionMode">Modo de recepción</label><select id="profileReceptionMode" onchange="onReceptionModeChanged()">
+                  <option value="CONTRACT">Por contrato</option>
+                  <option value="PERMISSIVE">Permisivo: recibir sin exigir contrato</option>
+                  <option value="LEARN">Aprender del primer mensaje externo</option>
+              </select></div>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer; background:#217a53; color:#fff; padding:4px 10px; border-radius:12px; font-size:11px; font-weight:bold;">
+                  <input type="checkbox" id="profileStrictValidation" onchange="onStrictValidationChanged()" checked> Estricta: rechazar incumplimientos. Desmarcada: advertencias.
+              </label>
+              <div style="margin-left:auto; display:flex; gap:10px; align-items:center;">
+                  <span id="badgeInbound" style="display:none; font-size:11px; background:#217a53; color:#fff; padding:3px 8px; border-radius:12px; font-weight:600;"><i class="fas fa-check-circle"></i> Inbound Guardado</span>
+                  <span id="badgeOutbound" style="display:none; font-size:11px; background:#a76505; color:#fff; padding:3px 8px; border-radius:12px; font-weight:600;"><i class="fas fa-check-circle"></i> Outbound Guardado</span>
+                  <button type="button" style="background:#176b7a;" onclick="openValidatorModal()">✨ Generar Contrato Semántico</button>
+              </div>
+          </div>
+          <p id="profileReceptionStatus" class="hint" role="status"></p>
+          <details><summary>Salida avanzada: grupos de estudios y mapeos JSON</summary>
+            <label><input type="checkbox" id="useAdvancedOutbound"> Usar esta definición completa de salida</label>
+            <p class="hint">Los perfiles dinámicos conservan aquí su estructura anidada. OBR usa repeatBy: studies y sus OBX hijos usan repeatBy: results. Las fuentes result.valueType, result.hl7Value y result.subId conservan tipos y relaciones. Cuando está activo, este bloque define la salida al guardar.</p>
+            <textarea id="advancedOutbound" rows="16" style="font-family:Consolas,monospace;width:100%" aria-label="Definición avanzada de salida"></textarea>
+          </details>
+
+          <div id="validatorModal" class="hl7-popup" style="display:none; width:650px; max-width:95vw; max-height:85vh; overflow-y:auto; background:#fff; padding:20px; border-radius:12px; border:1px solid #dbe5e8; box-shadow:0 12px 36px rgba(0,0,0,0.15)">
+              <h4 style="margin:0 0 10px 0; color:#176b7a; font-size:16px">✨ Auto-Generador de Contratos Semánticos</h4>
+              <p style="font-size:12px; margin-bottom:12px; color:#64747c; line-height:1.5">Pega un mensaje HL7 crudo (OML u ORU). Se conservarán segmentos, orden, repeticiones y componentes; los datos clínicos se convertirán en placeholders y los códigos estructurales en reglas editables.</p>
+              <p class="hint">Por defecto se genera una base flexible: que un campo aparezca en el ejemplo no significa que sea obligatorio en todos los mensajes.</p>
+              <label><input type="checkbox" id="inferStrict" style="width:auto"> Exigir todos los campos del ejemplo (avanzado)</label>
+
+              <textarea id="validatorText" style="height:120px; font-family:Consolas,monospace; font-size:11px; width:100%; border:1px solid #dbe5e8; border-radius:6px; padding:10px" placeholder="MSH|^~\&|HIS..."></textarea>
+
+              <div id="semanticTreeContainer" style="display:none; margin-top:14px;">
+                  <h4 style="margin:0 0 8px 0; font-size:13px; color:#17252b">Árbol Semántico Inferido <small style="font-weight:normal; color:#bc3d3d">(Puedes editarlo libremente)</small></h4>
+                  <textarea id="semanticTreeCode" style="height:250px; width:100%; resize:vertical; background:#1e1e1e; color:#d4d4d4; padding:12px; border-radius:6px; font-size:11px; font-family:Consolas,monospace; border:none;"></textarea>
+                  <h4 style="margin:10px 0 6px; font-size:13px; color:#17252b">Vista previa del contrato aplicado</h4>
+                  <pre id="inferredContractPreview" style="max-height:180px; overflow:auto; white-space:pre; background:#f7fafc; border:1px solid #dbe5e8; padding:10px; border-radius:6px; font-size:10px;"></pre>
+              </div>
+
+              <div class="row-btns" style="margin-top:16px">
+                  <button type="button" id="configureExampleButton" onclick="configureFromExample()">Usar mensaje y guardar perfil</button>
+                  <button type="button" id="btnAnalyzeSemantic" onclick="generateSemanticTree()" style="background:#176b7a; padding:10px 16px;">Analizar Muestra 🧠</button>
+                  <button type="button" id="btnSaveInbound" onclick="saveSemanticTree('inbound')" style="display:none; background:#217a53; padding:10px 16px;">Guardar como Contrato INBOUND (Recepción)</button>
+                  <button type="button" id="btnSaveOutbound" onclick="saveSemanticTree('outbound')" style="display:none; background:#a76505; padding:10px 16px;">Guardar como Contrato OUTBOUND (Envío)</button>
+                  <button type="button" class="ghost" onclick="closeValidatorModal()" style="padding:10px 16px;">Cerrar</button>
+              </div>
+          </div>
+
+          <div class="row" style="margin-top:14px">
+              <button id="saveProfileButton" onclick="saveProtocolProfile()" style="background:#2b6cb0; padding:10px 20px; font-weight:bold;">Guardar perfil nuevo</button>
+              <button class="ghost" onclick="saveFlexibleProtocolProfile()">Guardar versión flexible</button>
+              <button class="ghost" onclick="startNewProtocolProfile()">+ Nuevo perfil</button>
+              <button class="ghost" onclick="loadProtocolProfiles()">Ver versiones guardadas</button>
+          </div>
+          <p id="profileStatus" class="hint"></p>
+          <p id="profileSaveState" class="hint" role="status"></p>
+          <p id="profilePreviewStatus" class="hint" role="status"></p>
+          <div class="basic-hl7"><strong>Catálogo conectado a este equipo</strong><p id="profileCatalogStatus" class="hint"></p><button class="ghost" onclick="openLinkedCatalog()">Abrir catálogo de este equipo</button><button class="ghost" onclick="importExampleToCatalog()">Llevar estudios del ejemplo al catálogo</button></div>
+          <div class="cols-2" style="margin-top:12px; align-items:stretch;">
+              <div style="background:#f0f7f4; padding:10px; border-radius:6px; border:1px solid #c2d1c9; display:flex; flex-direction:column;">
+                  <h4 style="margin-top:0; color:#176b7a; font-size:13px">📥 Contrato de Entrada (Inbound)</h4>
+                  <p style="font-size:11px; margin-bottom:8px; color:#555; line-height:1.2;">Reglas de validación y esquema JSON que el Simulador exigirá para recibir las órdenes de Mirth.</p>
+                  <pre id="previewInboundBox" style="margin:0; max-height:250px; overflow-y:auto; font-size:10px; display:block; background:#fff; border:1px solid #ddd; padding:8px; border-radius:4px; flex-grow:1; color:#333;"></pre>
+              </div>
+              <div style="background:#fcf5eb; padding:10px; border-radius:6px; border:1px solid #e2d1bc; display:flex; flex-direction:column;">
+                  <h4 style="margin-top:0; color:#a76505; font-size:13px">📤 Mensaje de Salida (Outbound)</h4>
+                  <p style="font-size:11px; margin-bottom:8px; color:#555; line-height:1.2;">Mensaje base, contrato con placeholders y ejemplo HL7 generado con datos de prueba.</p>
+                  <pre id="profilePreview" style="margin:0; max-height:250px; overflow-y:auto; font-size:10px; display:block; background:#fff; border:1px solid #ddd; padding:8px; border-radius:4px; flex-grow:1; color:#333;"></pre>
+              </div>
+          </div>
+          <div id="profileVersions" class="stack" style="margin-top:12px"></div>
+        </article>
+<script>
+    function profileDefinition() {
+      const profileName=el('profileName').value.trim();
+      if(!profileName)throw Error('Escribe el nombre del perfil antes de guardar.');
+      const type = el("profileMessageType").value.split("^");
+      const inboundMapping = (target, id) => { const paths=el(id).value.split(",").map(x=>x.trim()).filter(Boolean); return {target,source:paths[0] || "",alternatives:paths.slice(1)}; };
+
+      const outboundMapping = (source, id) => {
+          const paths = el(id).value.split(",").map(x=>x.trim()).filter(Boolean);
+          return paths.map(p => ({target: p, source}));
+      };
+
+      const allOutboundFields = window.basicHL7.outboundFields();
+
+      let segments = [
+        { name:"MSH", fields:[{target:"MSH-3",source:"analyzer.id"},{target:"MSH-7",source:"system.timestamp"},{target:"MSH-9.1",sourceType:"fixed",value:type[0] || "ORU"},{target:"MSH-9.2",sourceType:"fixed",value:type[1] || "R01"},{target:"MSH-10",source:"system.messageId"},{target:"MSH-12",sourceType:"fixed",value:el("profileVersion").value}]},
+        { name:"ORC", fields:[{target:"ORC-1",sourceType:"fixed",value:"RE"}]},
+        { name:"OBX", repeatBy:"results", fields:[{target:"OBX-1",source:"counter"},{target:"OBX-2",sourceType:"fixed",value:el("profileResultObxType").value},{target:el("profileResultCode").value,source:"result.code"},{target:el("profileResultValue").value,source:"result.value"},{target:el("profileResultUnit").value,source:"result.unit"},{target:el("profileResultDocument").value,source:"resultDocument.pdfBase64"},{target:"OBX-11",sourceType:"fixed",value:"F"}].filter(f=>f.target && f.target.includes("-"))}
+      ];
+
+      for (const field of allOutboundFields) {
+          const segName = field.target.split("-")[0];
+          let seg = segments.find(s => s.name === segName && !s.repeatBy);
+          if(!seg) { seg = {name:segName, fields:[]}; segments.push(seg); }
+          seg.fields.push(field);
+      }
+
+      if (window.savedOutboundSchema?.formatVersion === 2) {
+          segments = structuredSchemaToOutboundSegments(window.savedOutboundSchema);
+      }
+
+      if (!window.savedOutboundSchema) segments.sort((a, b) => {
+          let idxA = protocolSegmentOrder.indexOf(a.name);
+          let idxB = protocolSegmentOrder.indexOf(b.name);
+          if (idxA === -1) idxA = 999;
+          if (idxB === -1) idxB = 999;
+          return idxA - idxB;
+      });
+
+      const definition = {
+          name: profileName,
+          activate: true,
+          inbound: {
+              receptionMode: el('profileReceptionMode').value,
+              strictValidation: el("profileStrictValidation").checked,
+              messageType: el("profileInboundType").value,
+              schema: window.savedInboundSchema || null,
+              rawHL7: window.savedInboundRawHL7 || null,
+              mappings: [
+                  inboundMapping("patient.id","profilePatientId"),
+                  inboundMapping("patient.name","profilePatientName"),
+                  inboundMapping("order.id","profileOrderId"),
+                  inboundMapping("order.fillerId","profileFillerId"),
+                  inboundMapping("sample.id","profileSampleId"),
+                  inboundMapping("test.code","profileTestCode"),
+                  inboundMapping("test.name","profileTestName")
+              ]
+          },
+           outbound: {
+               schema: window.savedOutboundSchema || null,
+               rawHL7: window.savedOutboundRawHL7 || null,
+               events: {
+                  RESULT_FINAL: {
+                      messageType: window.savedOutboundSchema?.messageType || el("profileMessageType").value,
+                      version: el("profileVersion").value,
+                      segments
+                  }
+              }
+          }
+      };
+      if(window.savedProtocolDefinition){
+        definition.inbound={...structuredClone(window.savedProtocolDefinition.inbound || {}),...definition.inbound,
+          validationMode:el('profileStrictValidation').checked?'STRICT':'WARN'};
+        definition.outbound=structuredClone(window.savedProtocolDefinition.outbound || {});
+      }
+      if(window.generatedOutboundDefinition)definition.outbound=structuredClone(window.generatedOutboundDefinition);
+      if (el('useAdvancedOutbound').checked) {
+        definition.outbound = JSON.parse(el('advancedOutbound').value);
+      }
+      return window.basicHL7.apply(definition);
+    }
+
+    async function saveProtocolProfile() {}
+    function structuredSchemaToOutboundSegments(schema) {
+        const dynamicSource = (semantic, segmentName) => {
+            const common = {
+                SENDING_APPLICATION:{source:"analyzer.id"}, MESSAGE_DATETIME:{source:"system.timestamp"},
+                MESSAGE_CONTROL_ID:{source:"system.messageId"}, PATIENT_IDENTIFIER:{source:"patient.id"},
+                SENDING_FACILITY:{source:"analyzer.vendor"}, RECEIVING_APPLICATION:{source:"inbound.MSH-3"}, RECEIVING_FACILITY:{source:"inbound.MSH-4"},
+                FAMILY_NAME:{source:"patient.name",transform:"component1"}, GIVEN_NAME:{source:"patient.name",transform:"component2"},
+                BIRTH_DATE:{source:"patient.birthDate"}, ADMINISTRATIVE_SEX:{source:"patient.sex"}, PATIENT_CLASS:{source:"visit.type"},
+                PLACER_ORDER_NUMBER:{source:"order.id"}, FILLER_ORDER_NUMBER:{source:"order.fillerId"},
+                SPECIMEN_IDENTIFIER:{source:"sample.id"}, TEST_CODE:{source:"test.code"}, TEST_NAME:{source:"test.name"},
+                SPECIMEN_TYPE_CODE:{source:"sample.code"}, SPECIMEN_TYPE_NAME:{source:"sample.name"},
+                SET_ID:{source:"counter"}, OBSERVATION_VALUE:{source:"result.value"}, UNITS:{source:"result.unit"},
+                REFERENCE_RANGE:{source:"result.referenceRange"}, ABNORMAL_FLAGS:{source:"result.abnormalFlag"},
+                VALUE_TYPE:{source:"result.valueType"}, OBSERVATION_STATUS:{source:"result.status"}
+            };
+            if (segmentName === "OBX" && semantic === "OBSERVATION_IDENTIFIER") return {source:"result.code"};
+            if (segmentName === "OBX" && semantic === "OBSERVATION_TEXT") return {source:"result.name"};
+            return common[semantic] || null;
+        };
+        const fieldFromRule = (target, rule, segmentName) => {
+            if (Object.prototype.hasOwnProperty.call(rule, "const")) return {target,sourceType:"fixed",value:String(rule.const)};
+            if (rule.source) return {target,source:rule.source,required:!!rule.required,...(rule.transform ? {transform:rule.transform} : {}),...(rule.default !== undefined ? {default:rule.default} : {})};
+            if(['PATIENT_IDENTIFIER','FAMILY_NAME','GIVEN_NAME'].includes(rule.semantic) && Number(/\[(\d+)\]/.exec(target)?.[1] || 1)>1)return {target,source:'inbound.'+target,required:!!rule.required};
+            const dynamic = dynamicSource(rule.semantic, segmentName);
+            if (dynamic) return {target,...dynamic,required:!!rule.required,...(rule.default !== undefined ? {default:rule.default} : ['VALUE_TYPE','OBSERVATION_STATUS','SENDING_FACILITY'].includes(rule.semantic)?{default:String(rule.example || '')}:{})};
+            // An example is never an implicit fixed value. Unknown fields read
+            // from the current order; only an explicit const pins a value.
+            return {target,source:'inbound.'+target,required:false};
+        };
+        return (schema.segments || []).map(segment => {
+            const output = {name:segment.name,fields:[]};
+            if (segment.name === "OBX" && segment.max === "*") output.repeatBy = "results";
+            for (const [fieldNumber, field] of Object.entries(segment.fields || {})) {
+                if (segment.name === "MSH" && fieldNumber === "2") continue;
+                for (const repetition of field.repetitions || []) {
+                    const repIndex = repetition.index || 1;
+                    for (const [componentNumber, component] of Object.entries(repetition.components || {})) {
+                        if (component.subcomponents) {
+                            for (const [subNumber, rule] of Object.entries(component.subcomponents)) {
+                                const target = `${segment.name}-${fieldNumber}[${repIndex}].${componentNumber}.${subNumber}`;
+                                output.fields.push(fieldFromRule(target, rule, segment.name));
+                            }
+                        } else {
+                            let target = `${segment.name}-${fieldNumber}`;
+                            if (field.maxRepetitions==='*' || (field.maxRepetitions || 1)>1 || field.repetitions.length>1) target += `[${repIndex}]`;
+                            if (field.composite) target += `.${componentNumber}`;
+                            output.fields.push(fieldFromRule(target, component, segment.name));
+                        }
+                    }
+                }
+            }
+            return output;
+        });
+    }
+
+
+    function triggerAutoPreview() {}
+</script>

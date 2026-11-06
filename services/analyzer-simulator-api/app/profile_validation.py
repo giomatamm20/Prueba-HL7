@@ -2,7 +2,7 @@
 import copy
 import re
 
-from .hl7_contract import parse_hl7, validate_hl7_contract
+from .hl7_contract import parse_hl7, validate_hl7_contract, flexible_contract
 from .hl7_orders import extract_metadata
 from .profile_parser import validate_strict_profile
 
@@ -98,6 +98,9 @@ def validate_profile(payload: dict) -> dict:
 
 def _validate_profile(payload: dict) -> dict:
     profile = copy.deepcopy(payload)
+    if 'catalog' in profile:
+        from .equipment_profile import validate_embedded_catalog
+        profile['catalog'] = validate_embedded_catalog(profile['catalog'])
     for direction in ("inbound", "outbound"):
         block = profile.get(direction) or {}
         if not isinstance(block, dict):
@@ -197,3 +200,27 @@ def validate_outbound(message: str, profile: dict | None, event: str, control_id
     schema = config.get("schema") or (block.get("eventSchemas") or {}).get(event) or block.get("schema")
     if schema:
         validate_strict_profile(message, schema)
+
+
+def flexible_profile(payload: dict) -> dict:
+    profile = validate_profile(payload)
+    inbound, outbound = profile["inbound"], profile["outbound"]
+    inbound["validationMode"] = "WARN"
+    inbound["strictValidation"] = False
+    if inbound.get("schema"):
+        inbound["schema"] = flexible_contract(inbound["schema"])
+    for schema_key in ("schema",):
+        if outbound.get(schema_key):
+            outbound[schema_key] = flexible_contract(outbound[schema_key])
+    outbound["eventSchemas"] = {name: flexible_contract(schema) for name, schema in (outbound.get("eventSchemas") or {}).items()}
+    def relax_segments(segments):
+        for segment in segments:
+            for field in segment.get("fields") or []:
+                if not (segment["name"] == "MSH" and field["target"].split(".")[0] in {"MSH-9", "MSH-10", "MSH-12"}):
+                    field["required"] = False
+            relax_segments(segment.get("children") or [])
+    for event in (outbound.get("events") or {}).values():
+        if event.get("schema"):
+            event["schema"] = flexible_contract(event["schema"])
+        relax_segments(event.get("segments") or [])
+    return validate_profile(profile)

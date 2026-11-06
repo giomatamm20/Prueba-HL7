@@ -145,37 +145,27 @@ El catalogo incluye un analizador `anapath-lis-01` con perfil `ANAPATH`.
 
 ## Comportamiento configurable
 
-### Catálogo y recepción de exámenes desconocidos
+### Estudios dentro del perfil del equipo
 
-El catálogo se configura en cuatro pasos: **Equipo → Exámenes → Resultados →
-Guardar**. En el paso 4, **Guardar y usar en este equipo** guarda los cambios y
-asigna la revisión al analizador seleccionado. Los valores escritos en el
-formulario se incluyen al avanzar o guardar, sin tener que pulsar antes
-«Agregar / actualizar valor». También se puede guardar una revisión sin asignarla.
-Los grupos, escenarios y herramientas de importación quedan como opciones avanzadas.
+La configuración HL7 se edita en **Perfil del equipo**. Hay una sola definición
+por equipo, con entrada, salida, estudios y generadores. **Guardar cambios** guarda
+una revisión completa y la aplica al equipo en una sola transacción.
 
-El selector incluye equipos HL7 de laboratorio, también AnaPath. AnaPath conserva
-su flujo de informes mientras no se le asigne un catálogo explícitamente. La
-asignación conserva el contrato del diseñador; solo cambia la salida cuando se
-elige **Aplicar salida ORU multiestudio**. PACS mantiene su flujo de imágenes y
-no aparece como destino de un catálogo de laboratorio.
+En **Estudios y analitos**, cada fila declara código, nombre, tipo, unidad,
+referencia y generador. Se puede desactivar un analito sin eliminarlo. Los grupos
+repetibles y escenarios se conservan dentro del mismo perfil. No hay que crear,
+guardar o asignar un catálogo aparte.
 
-Para probar solo la recepción HL7, activa **Recibir exámenes aunque no estén en
-el catálogo (solo recepción)** en el paso 1 y pulsa **Guardar opción de recepción**.
-La misma opción está en **Configurar equipo**. No requiere crear un catálogo.
-La API permite guardarla con `PUT /api/analyzers/{id}` y
-`{"acceptUnknownTests": true}`; por defecto está desactivada.
+La pestaña **Recepción** permite validar el contrato, recibir en modo permisivo o
+aprender del primer mensaje externo. Los estudios todavía sin generadores pueden
+recibirse y quedar en `pendingCatalogStudies`. Al completar sus analitos en este
+mismo perfil y guardar, la orden pendiente se puede procesar. Los resultados ya
+generados conservan sus definiciones y valores anteriores.
 
-Una orden con un código como `LAB_X6ED9` puede recibirse con ACK positivo y
-quedar en la worklist con `pendingCatalogStudies`. Esta opción solo omite la
-restricción de códigos al recibir HL7: el contrato y las demás validaciones
-siguen vigentes. No cambia la recepción ASTM ni la creación manual de muestras.
-No genera resultados genéricos para esos códigos. Para procesar o enviar
-resultados, configura el examen (o su alias) y sus valores en un catálogo y
-asígnalo al equipo. Al procesar de nuevo la misma orden pendiente, se resuelve
-contra el catálogo asignado. Una plantilla de resultados elegida explícitamente
-en el paso 4 también permite resolver códigos desconocidos. Las órdenes ya
-definidas conservan su revisión y resultados.
+Los catálogos anteriores siguen disponibles para las órdenes históricas. Al abrir
+un equipo que tiene uno asignado, se incorpora al borrador del perfil sin modificar
+la configuración guardada. El siguiente guardado lo incluye en la revisión del
+perfil. La URL anterior del catálogo redirige a esta pantalla única.
 
 Si un perfil de salida requiere `order.fillerId` y la orden recibida no trae
 ORC-3 ni OBR-3, el escritor asigna un identificador propio `SIM-…` basado en el
@@ -274,87 +264,39 @@ ORC|NW|ORD1001
 OBR|1|ORD1001|SMP1001|CBC^HEMOGRAMA
 ```
 
-## Contratos HL7 por analizador
+## Perfil HL7 único por equipo
 
-El **Diseñador HL7 → Campos básicos del equipo** permite ajustar la base
-inferida de un mensaje sin editar JSON. Para paciente, orden, identificador
-del laboratorio, muestra y examen se configuran por separado:
+**Generar desde mensaje** analiza un ejemplo de entrada o salida y permite aplicar
+la base al borrador. Detecta segmentos, repeticiones, componentes y datos del caso;
+los OBX alimentan las filas de analitos de ese mismo perfil. No copia pacientes ni
+valores de resultados al catálogo. Los generadores existentes se conservan.
 
-- **Leer del mensaje recibido**: ruta HL7 y alternativas separadas por coma.
-  El valor encontrado en el ejemplo aparece debajo de la entrada.
-- **Obligatorio al recibir**: exige encontrar el dato en alguna de esas rutas;
-  las reglas estructurales del contrato siguen vigentes.
-- **Devolver en el resultado**: uno o varios destinos independientes de la
-  entrada. Vacío omite ese dato en la salida. También se pueden cambiar los
-  destinos del código, valor y unidad del resultado.
+**Campos del mensaje** permite elegir dónde leer cada dato o escribirlo en la
+respuesta, incluyendo rutas propias del fabricante. La entrada y la salida tienen
+rutas independientes dentro de la misma definición. No hay una segunda tabla de
+campos básicos ni un generador que guarde por su cuenta.
 
-La tabla carga los mapeos del perfil y propone rutas desde la semántica del
-contrato para datos que todavía no tienen mapeo. No sustituye rutas personalizadas
-por las de otro equipo. Las referencias habituales de HL7 solo se usan como
-punto de partida al crear un perfil nuevo.
+Al compilar, la salida repite OBR por estudio y OBX por analito, conserva las rutas
+propias y los otros eventos, y toma tipo, valor, unidades y referencias de la tabla.
+El contrato de salida se deriva de esa plantilla; no quedan requisitos obsoletos
+del ejemplo que contradigan las rutas editadas. La vista previa usa el borrador
+completo y ejecuta la misma validación de salida que el envío real.
 
-**Añadir otro dato del equipo** permite configurar fecha de nacimiento, sexo,
-dirección, visita, tipo de muestra, prioridad o un dato propio con clave y nombre.
-Los datos propios se leen de la ruta configurada y se guardan como `customFields`;
-sus nombres y rutas se recuperan al abrir el perfil.
+**Guardar cambios** persiste `name`, `inbound`, `outbound` y `catalog.studies`
+juntos en una revisión inmutable. `expectedVersion` impide sobrescribir cambios
+de otra sesión. El historial permite recuperar una revisión en el mismo borrador;
+no se crean perfiles ni asignaciones separados para cada parte.
 
-**Mensaje de salida que estás configurando** selecciona el evento del perfil.
-Se conservan los demás eventos, sus grupos, segmentos privados, reglas y
-transformaciones. No se reemplazan automáticamente por una plantilla ORU.
-Las transformaciones de apellido y nombre se conservan al editar destinos.
-Los identificadores repetidos del paciente se pueden copiar por separado.
+API principal:
 
-En una salida inferida, solo una regla `const` fija un valor. Los campos sin
-semántica conocida se copian desde el mensaje real (`inbound.SEG-campo`) en vez
-de fijar los valores del ejemplo. Si el mensaje no contiene el dato exigido por
-el contrato de salida, es necesario ajustar el mapeo antes de enviarlo.
+- `GET /api/analyzers/{id}/equipment-profile`: perfil completo; incorpora datos anteriores al abrir.
+- `PUT /api/analyzers/{id}/equipment-profile`: guardado atómico, con `expectedVersion`.
+- `POST /api/analyzers/{id}/equipment-profile/infer`: incorpora un ejemplo en un borrador completo.
+- `POST /api/analyzers/{id}/equipment-profile/preview`: genera la salida desde el mismo borrador.
 
-Por ejemplo, `ORC-4.1` puede mapearse como `order.id` para una integración
-que identifica sus órdenes en ese campo, y devolverlo en `ORC-4.1, OBR-2`.
-`OBR-4.1` sigue siendo un campo distinto para el código del examen.
-Si un equipo utiliza ese mismo dato como identificador del laboratorio,
-puede configurar también la entrada de `order.fillerId` en `ORC-4.1`.
-Un dato recibido explícitamente tiene prioridad sobre el identificador
-automático del simulador.
-
-Los cambios se guardan con **Guardar perfil / Actualizar perfil** y se
-recuperan al abrir la revisión. Los cambios de destino actualizan también
-el contrato de salida generado; los grupos de estudios y parámetros se
-conservan. La pantalla detecta ubicaciones inválidas y destinos compartidos
-por datos diferentes antes de guardar.
-
-Al cargar la aplicación o elegir un equipo, el diseñador recupera automáticamente
-su perfil activo. Si no tiene perfil activo, recupera el borrador más reciente.
-La actualización periódica del panel no reemplaza los cambios del editor. La
-vista previa informa su resultado por separado del estado de guardado.
-
-La configuración usa el generador semántico y la tabla de campos básicos;
-la antigua cuadrícula de segmentos ya no forma parte del diseñador.
-El nombre escrito en **Nombre del perfil** se guarda en cada revisión y no
-se reemplaza si termina una carga pendiente mientras se edita el formulario.
-Las versiones eliminadas dejan de aparecer y no pueden reactivarse ni editarse.
-Se conserva su registro interno para las órdenes que ya las referencian.
-Eliminar la versión activa deja el equipo en STANDBY hasta activar otro perfil.
-
-El Diseñador HL7 permite seleccionar un analizador y pegar un mensaje OML u
-ORU como muestra. El backend infiere y guarda un contrato versionado asociado
-exclusivamente a ese analizador. La vista previa reemplaza los datos variables
-por placeholders y conserva como reglas los valores estructurales.
-
-El contrato estructural valida:
-
-- separadores y tipo de mensaje de `MSH`;
-- orden, presencia y cardinalidad de segmentos;
-- campos, repeticiones `~`, componentes `^` y subcomponentes `&`;
-- valores constantes y listas permitidas;
-- fechas HL7 `DT`/`TS`, valores numéricos y patrones editables.
-
-Las rutas de mapeo pueden seleccionar repeticiones, por ejemplo
-`PID-3[1].1` y `PID-3[2].5`. En modo estricto, las diferencias del contrato
-rechazan la orden con `MSA|AE`; en modo de advertencias pueden aceptarse con
-`MSA|AA` y segmentos `ERR` de severidad `W`. Los errores técnicos que impiden
-construir una orden siguen respondiendo `MSA|AE`. El contrato debe definir
-entrada y salida antes de activar el equipo en modo **Por contrato**.
+Las API anteriores se conservan para compatibilidad. No permiten asignar otro
+catálogo por fuera a un equipo que ya utiliza el perfil unificado. Las actualizaciones
+de conexión tampoco cambian sus códigos ni su política de recepción.
 
 ### Recepción permisiva y aprendizaje desde el equipo
 

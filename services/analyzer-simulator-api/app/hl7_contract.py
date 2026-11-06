@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import copy
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -194,7 +195,7 @@ def canonical_message(raw_message: str) -> str:
     return "\r".join(rows) + "\r"
 
 
-def infer_hl7_contract(raw_message: str) -> dict[str, Any]:
+def infer_hl7_contract(raw_message: str, strict: bool = True) -> dict[str, Any]:
     message = parse_hl7(raw_message)
     grouped: list[tuple[str, list[HL7Segment]]] = []
     for segment in message.segments:
@@ -235,10 +236,48 @@ def infer_hl7_contract(raw_message: str) -> dict[str, Any]:
         },
         "segments": segment_rules,
     }
+    if not strict:
+        contract = flexible_contract(contract)
     contract["preview"] = render_contract_preview(contract)
     # A contract inferred from a sample must always accept that same sample.
     validate_hl7_contract(raw_message, contract)
     return contract
+
+
+def flexible_contract(contract: dict[str, Any]) -> dict[str, Any]:
+    """A single example describes locations, not universal clinical requirements."""
+    result = copy.deepcopy(contract)
+    if int(result.get("formatVersion") or 1) < 2:
+        for fields in result.values():
+            for rule in fields.values():
+                rule["required"] = False
+        return result
+    result["inferenceMode"] = "FLEXIBLE"
+    result["options"] = {**(result.get("options") or {}), "allowUnexpectedSegments": True,
+                         "allowUnexpectedFields": True, "allowUnexpectedComponents": True}
+    def optional(rule):
+        if isinstance(rule, dict):
+            if "required" in rule:
+                rule["required"] = False
+            if rule.get("semantic") == "PROCESSING_ID":
+                rule.pop("const", None)
+            if "minRepetitions" in rule:
+                rule["minRepetitions"] = 0
+                rule["maxRepetitions"] = "*"
+            for child in rule.values():
+                optional(child)
+        elif isinstance(rule, list):
+            for child in rule:
+                optional(child)
+    for segment in result.get("segments", []):
+        segment["min"] = 1 if segment["name"] == "MSH" else 0
+        segment["max"] = 1 if segment["name"] == "MSH" else "*"
+        for number, rule in (segment.get("fields") or {}).items():
+            if segment["name"] == "MSH" and number in {"2", "9", "10", "12"}:
+                continue
+            optional(rule)
+    result["preview"] = render_contract_preview(result)
+    return result
 
 
 def _infer_field(name: str, number: int, samples: list[HL7Field], required: bool = True) -> dict[str, Any]:
@@ -387,6 +426,10 @@ def hl7_contract_issues(raw_message: str, contract: dict[str, Any]) -> list[str]
     actual_index = 0
     for definition in definitions:
         name = str(definition.get("name") or "").upper()
+        if options.get("allowUnexpectedSegments"):
+            expected_names = {str(item.get("name") or "").upper() for item in definitions}
+            while actual_index < len(message.segments) and message.segments[actual_index].name not in expected_names:
+                actual_index += 1
         start = actual_index
         maximum = definition.get("max", 1)
         max_count = len(message.segments) if maximum == "*" else int(maximum)
@@ -440,6 +483,8 @@ def _validate_segment(segment: HL7Segment, definition: dict[str, Any], occurrenc
 
     if not options.get("allowUnexpectedFields", False):
         for number, field_value in segment.fields.items():
+            if segment.name == "MSH" and number == 18 and field_value.raw in {"UNICODE UTF-8", "UTF-8"}:
+                continue
             if field_value.raw != "" and str(number) not in field_rules:
                 errors.append(f"{segment.name}[{occurrence}]-{number}: campo no definido en el contrato")
 

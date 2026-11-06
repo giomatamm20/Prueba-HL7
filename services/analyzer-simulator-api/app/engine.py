@@ -16,7 +16,7 @@ from .astm import ASTMOrderError, build_astm_result, parse_astm_order, send_astm
 from .behavior import normalize_behavior, validate_hl7_behavior
 from .study_catalog import bind_studies, dynamic_outbound, generate_results, seed_catalog, validate_catalog
 from .hl7_orders import HL7OrderError, build_ack, extract_metadata, parse_order, validate_anapath_order
-from .hl7_contract import hl7_contract_issues, infer_hl7_contract, parse_hl7
+from .hl7_contract import hl7_contract_issues, infer_hl7_contract, parse_hl7, flexible_contract
 from .hl7_text import normalize_hl7
 from .protocols import build_anapath_event, build_hl7_oru, send_mllp
 from .profile_builder import build_profile_message
@@ -31,6 +31,7 @@ from .store import SimulatorStore
 from .configuration import validate_ports
 from .profile_validation import validate_profile, validate_outbound, valid_path, profile_ready, reception_mode, outbound_ready
 from .hl7_values import declare_utf8
+from .equipment_profile import compile_equipment_profile, apply_example, study_ready
 
 LOGGER = logging.getLogger("analyzer-simulator.engine")
 
@@ -190,6 +191,64 @@ class SimulationEngine:
             raise ValueError("Revisión de catálogo inexistente")
         return revision
 
+    def equipment_profile(self, analyzer_id):
+        with self.lock:
+            analyzer = self.analyzers.get(analyzer_id)
+            if not analyzer or analyzer['protocol'] != 'HL7':
+                raise ValueError('Seleccione un equipo HL7')
+            current = self.store.get_active_protocol_profile(analyzer_id)
+            if not current:
+                drafts = [p for p in self.list_protocol_profiles(analyzer_id) if p['status'] == 'DRAFT']
+                current = max(drafts, key=lambda p: p['version'], default=None)
+            profile = copy.deepcopy(current) if current else {'name': analyzer['name'], 'version': 0,
+                'inbound': {'receptionMode': 'LEARN', 'strictValidation': False, 'acceptUnknownTests': True, 'mappings': []},
+                'outbound': {'events': {}}}
+            if 'catalog' not in profile:
+                legacy = self.catalog_revision(analyzer['catalogRevisionId']) if analyzer.get('catalogRevisionId') else None
+                profile['catalog'] = {'studies': copy.deepcopy(legacy['studies']) if legacy else []}
+                profile['legacyCatalogImported'] = bool(legacy)
+            profile['inbound'].setdefault('acceptUnknownTests', analyzer.get('acceptUnknownTests', False))
+            return profile
+
+    def _effective_catalog(self, analyzer, profile=None):
+        profile = profile if profile is not None else self.store.get_active_protocol_profile(analyzer['id'])
+        if profile and 'catalog' in profile:
+            return {**copy.deepcopy(profile['catalog']), 'name': profile['name'], 'id': 'profile:' + profile['id'],
+                    'version': profile['version'], 'profileId': profile['id'], 'embedded': True}
+        return self.catalog_revision(analyzer.get('catalogRevisionId') or 'builtin-v1')
+
+    def save_equipment_profile(self, analyzer_id, payload, expected_version=None):
+        with self._atomic():
+            analyzer = self.analyzers.get(analyzer_id)
+            if not analyzer or analyzer['protocol'] != 'HL7':
+                raise ValueError('Seleccione un equipo HL7')
+            current = self.equipment_profile(analyzer_id)
+            if expected_version is not None and expected_version != current['version']:
+                raise ValueError('El perfil cambió en otra sesión. Recarga la revisión antes de guardar.')
+            definition = compile_equipment_profile(payload)
+            definition.pop('id', None)
+            definition.pop('version', None)
+            definition.pop('status', None)
+            definition.pop('legacyCatalogImported', None)
+            definition['activate'] = True
+            if current.get('id'):
+                definition['revisionOf'] = current['id']
+            saved = self._save_protocol_profile(analyzer_id, definition)
+            return saved
+
+    def preview_equipment_profile(self, analyzer_id, payload, event_type='RESULT_FINAL', scenario='NORMAL'):
+        profile = compile_equipment_profile(payload)
+        studies = profile['catalog']['studies']
+        pending = [s['code'] for s in studies if not study_ready(s)]
+        if pending:
+            return {'profile': profile, 'message': '', 'results': [], 'pendingStudies': pending,
+                    'issues': ['Configura los generadores de: ' + ', '.join(pending)]}
+        if not profile.get('outbound', {}).get('events', {}).get(event_type):
+            return {'profile': profile, 'message': '', 'results': [], 'pendingStudies': [],
+                    'issues': ['El perfil está listo para recibir. Importa una salida o añade analitos para devolver resultados.']}
+        return {'profile': profile, 'pendingStudies': [], 'issues': [],
+                **self.preview_protocol_profile(analyzer_id, profile, event_type, scenario)}
+
     def save_catalog(self, payload, catalog_id=None):
         definition = validate_catalog(payload)
         with self._atomic():
@@ -201,21 +260,97 @@ class SimulationEngine:
             self.store.save_catalog(revision)
             return revision
 
-    def assign_catalog(self, analyzer_id, revision_id, policy="BLOCK", template=None, configure_outbound=False):
+    @staticmethod
+    def catalog_protocol_issues(profile, revision):
+        event=((profile or {}).get("outbound") or {}).get("events", {}).get("RESULT_FINAL")
+        if not event:
+            return ["Falta un mensaje de salida para los resultados del catálogo."]
+        def segments(items):
+            return [item for segment in items for item in [segment, *segments(segment.get("children") or [])]]
+        all_segments=segments(event.get("segments") or [])
+        sources={field.get("source") for segment in all_segments for field in segment.get("fields") or []}
+        issues=[]
+        if not sources.intersection({"result.value", "result.hl7Value", "resultDocument.pdfBase64"}):
+            issues.append("La salida no incluye valores de resultado ni documento PDF.")
+        if "resultDocument.pdfBase64" in sources:
+            return issues
+        if (len(revision.get("studies", []))>1 or any(s.get("groups") for s in revision.get("studies", []))) and not any(s.get("repeatBy")=="studies" for s in all_segments):
+            issues.append("La salida necesita un grupo por estudio para representar todo el catálogo.")
+        def types(node):
+            return {p.get("valueType", "ST") for p in node.get("parameters", [])}.union(*(types(g) for g in node.get("groups", [])))
+        value_types=set().union(*(types(study) for study in revision.get("studies", [])))
+        fixed_types={f.get("value") for s in all_segments if s["name"]=="OBX" for f in s.get("fields", []) if f.get("target")=="OBX-2" and f.get("sourceType")=="fixed"}
+        if "result.valueType" not in sources and (not value_types or not value_types.issubset(fixed_types)):
+            issues.append("La salida debe tomar el tipo de dato de cada parámetro del catálogo.")
+        if any(study.get("groups") for study in revision.get("studies", [])) and "result.subId" not in sources:
+            issues.append("Falta el identificador de los grupos repetibles del catálogo.")
+        return issues
+
+    def configuration_summary(self, analyzer_id):
+        if analyzer_id not in self.analyzers:
+            raise ValueError("Unknown analyzer")
+        analyzer=self.analyzers[analyzer_id]
+        profile=self.store.get_active_protocol_profile(analyzer_id)
+        revision=self._effective_catalog(analyzer, profile)
+        issues=self.catalog_protocol_issues(profile, revision)
+        return {"analyzerId":analyzer_id,"catalog":{"id":revision["id"],"name":revision["name"],"version":revision["version"],
+                "assigned":bool(revision.get('embedded') or analyzer.get("catalogRevisionId")),"studyCount":len(revision["studies"])},
+                "profile":None if not profile else {"id":profile["id"],"name":profile["name"],"version":profile["version"],
+                    "receptionMode":reception_mode(profile["inbound"]),"outboundReady":outbound_ready(profile)},
+                "compatible":not issues,"issues":issues}
+
+    def assign_catalog(self, analyzer_id, revision_id, policy="BLOCK", template=None, configure_outbound=False, align_outbound=False):
         with self._atomic():
             analyzer = self.analyzers.get(analyzer_id)
             if not analyzer or analyzer.get("profile") == "PACS" or analyzer["protocol"] != "HL7":
                 raise ValueError("Seleccione un analizador HL7 de laboratorio")
             revision = self.catalog_revision(revision_id)
+            active = self.store.get_active_protocol_profile(analyzer_id)
+            if active and 'catalog' in active:
+                raise ValueError('Los estudios ya forman parte del perfil del equipo. Modifica y guarda ese perfil completo.')
             bind_studies(revision, [], policy, template)
             analyzer.update(catalogRevisionId=revision_id, unknownStudyPolicy=policy, genericStudyCode=template,
                             supportedTests=[alias for study in revision["studies"] for alias in [study["code"], *study.get("aliases", [])]])
-            if configure_outbound:
-                active = self.store.get_active_protocol_profile(analyzer_id)
-                if not active:
-                    raise ValueError("Configure primero el contrato HL7 de entrada en el Diseñador HL7")
-                self._save_protocol_profile(analyzer_id, {"name": active["name"] + " / estudios dinámicos",
-                    "inbound": active["inbound"], "outbound": {**dynamic_outbound()}, "activate": True})
+            active = self.store.get_active_protocol_profile(analyzer_id)
+            if configure_outbound or (align_outbound and self.catalog_protocol_issues(active, revision)):
+                outbound=copy.deepcopy((active or {}).get("outbound") or {})
+                event=dynamic_outbound()["events"]["RESULT_FINAL"]
+                existing=outbound.get("events", {}).get("RESULT_FINAL")
+                if existing:
+                    event=copy.deepcopy(existing)
+                    items=event.get("segments") or []
+                    if not any(s.get("repeatBy")=="studies" for s in items):
+                        group=dynamic_outbound()["events"]["RESULT_FINAL"]["segments"][2]
+                        for name in ("OBR","SPM","OBX"):
+                            previous=next((s for s in items if s["name"]==name),None)
+                            target=group if name=="OBR" else next(s for s in group["children"] if s["name"]==name)
+                            if previous:
+                                target["fields"]=copy.deepcopy(previous.get("fields") or [])
+                        result=[];inserted=False
+                        for item in items:
+                            if item["name"] in {"OBR","OBX","SPM"}:
+                                if not inserted:result.append(group);inserted=True
+                            else:result.append(item)
+                        if not inserted:result.append(group)
+                        event["segments"]=result
+                    def align_result_segments(items):
+                        for item in items:
+                            if item["name"]=="OBX":
+                                item["repeatBy"]="results"
+                                item["fields"]=[f for f in item.get("fields",[]) if f.get("target") not in {"OBX-2","OBX-4"}]
+                                item["fields"] += [{"target":"OBX-2","source":"result.valueType"},{"target":"OBX-4","source":"result.subId"}]
+                            align_result_segments(item.get("children") or [])
+                    align_result_segments(event.get("segments") or [])
+                prior_schema=(existing or {}).get("schema") or (outbound.get("eventSchemas") or {}).get("RESULT_FINAL") or outbound.get("schema")
+                event["schema"]={"formatVersion":2,"messageType":event["messageType"],"inferenceMode":"FLEXIBLE",
+                    "options":{"allowUnexpectedSegments":True,"allowUnexpectedFields":True,"allowUnexpectedComponents":True},
+                    "segments":[{"name":"MSH","min":1,"max":1,"fields":{}}]}
+                if prior_schema and int(prior_schema.get("formatVersion") or 1)>=2:
+                    event["schema"]=flexible_contract(prior_schema)
+                outbound.setdefault("events", {})["RESULT_FINAL"]=event
+                self._save_protocol_profile(analyzer_id, {"name": (active or {}).get("name") or "HL7 / " + revision["name"],
+                    "inbound": copy.deepcopy(active["inbound"]) if active else {"receptionMode":"LEARN"},
+                    "outbound":outbound, "activate":True, **({"revisionOf":active["id"]} if active else {})})
             analyzer["updatedAt"] = self._now()
             self.store.save_analyzer(analyzer)
             return dict(analyzer)
@@ -224,21 +359,30 @@ class SimulationEngine:
         if analyzer.get("profile") == "PACS" or analyzer.get("protocol") != "HL7":
             return
         # AnaPath keeps its report workflow until a catalog is explicitly assigned.
-        if analyzer.get("profile") == "ANAPATH" and not analyzer.get("catalogRevisionId"):
+        profile = self.store.get_active_protocol_profile(analyzer['id'])
+        embedded = bool(profile and 'catalog' in profile)
+        if analyzer.get("profile") == "ANAPATH" and not analyzer.get("catalogRevisionId") and (not embedded or not profile['catalog']['studies']):
             return
-        revision = self.catalog_revision(analyzer.get("catalogRevisionId") or "builtin-v1")
+        revision = self._effective_catalog(analyzer, profile)
         groups = order.get("studies") or [
             {"key": f"study-{index}", "code": code, "name": "", "orderId": order.get("orderId"),
              "sampleId": order["sampleId"], "sample": {"id": order["sampleId"], "code": order.get("sampleCode"), "name": order.get("sampleName")}}
             for index, code in enumerate(order["requestedTests"], 1)]
-        policy = analyzer.get("unknownStudyPolicy") or ("BLOCK" if analyzer.get("catalogRevisionId") else "TEMPLATE")
+        policy = 'BLOCK' if embedded else analyzer.get("unknownStudyPolicy") or ("BLOCK" if analyzer.get("catalogRevisionId") else "TEMPLATE")
         # Accepting an unknown inbound code must not silently invent a result.
         # Explicitly assigned templates remain an intentional result definition.
         pending = []
-        if receiving and analyzer.get("acceptUnknownTests") and (policy == "BLOCK" or not analyzer.get("catalogRevisionId")):
+        incomplete = {alias for study in revision['studies'] if embedded and not study_ready(study)
+                      for alias in [study['code'], *study.get('aliases', [])]}
+        if (receiving and analyzer.get("acceptUnknownTests") and (policy == "BLOCK" or not analyzer.get("catalogRevisionId"))) or any(g['code'] in incomplete for g in groups):
             codes = {alias for study in revision["studies"] for alias in [study["code"], *study.get("aliases", [])]}
-            pending = [group["code"] for group in groups if group["code"] not in codes]
-            known = bind_studies(revision, [g for g in groups if g["code"] in codes], "BLOCK")
+            if not receiving or not analyzer.get('acceptUnknownTests'):
+                unknown = [g['code'] for g in groups if g['code'] not in codes]
+                if unknown:
+                    raise ValueError('Estudio no definido en el perfil del equipo: ' + ', '.join(unknown))
+            ready_codes = codes - incomplete
+            pending = [group["code"] for group in groups if group["code"] not in ready_codes]
+            known = bind_studies(revision, [g for g in groups if g["code"] in ready_codes], "BLOCK")
             definitions = {study["key"]: study for study in known}
             bound = [definitions.get(g["key"], {**copy.deepcopy(g), "definition": None, "fallbackUsed": False}) for g in groups]
         else:
@@ -249,13 +393,15 @@ class SimulationEngine:
         order["pendingCatalogStudies"] = list(dict.fromkeys(pending))
         order["catalogRevisionId"] = revision["id"]
         order["catalogVersion"] = revision["version"]
+        if embedded:
+            order['catalogProfileId'] = profile['id']
         order["catalogFallbacks"] = [{"studyKey": s["key"], "code": s["code"], "templateCode": s["templateCode"]}
                                     for s in order["studies"] if s["fallbackUsed"]]
 
     @staticmethod
     def _require_result_catalog(order):
         if order.get("pendingCatalogStudies"):
-            raise ValueError("Orden recibida; configure y asigne en el catálogo los exámenes pendientes antes de generar o enviar resultados: "
+            raise ValueError("Orden recibida; configure los analitos de los estudios pendientes en el perfil del equipo antes de generar o enviar resultados: "
                              + ", ".join(order["pendingCatalogStudies"]))
 
     def regenerate_results(self, order_id, scenario="NORMAL"):
@@ -325,6 +471,9 @@ class SimulationEngine:
     def _save_protocol_profile(self, analyzer_id: str, payload: dict) -> dict:
         if analyzer_id not in self.analyzers:
             raise ValueError("Unknown analyzer")
+        active = self.store.get_active_protocol_profile(analyzer_id)
+        if active and 'catalog' in active and 'catalog' not in payload:
+            payload = compile_equipment_profile({**payload, 'catalog': active['catalog'], 'revisionOf': active['id']})
         payload = validate_profile(payload)
         inbound = dict(payload.get("inbound") or {})
         schema = inbound.get("schema") or {}
@@ -356,6 +505,11 @@ class SimulationEngine:
             "updatedAt": now,
         }
         self.store.save_protocol_profile(profile)
+        if 'catalog' in profile and profile['status'] == 'ACTIVE':
+            analyzer = self.analyzers[analyzer_id]
+            analyzer['acceptUnknownTests'] = bool(inbound.get('acceptUnknownTests', False))
+            analyzer['supportedTests'] = [alias for s in profile['catalog']['studies'] for alias in [s['code'], *s.get('aliases', [])]]
+            self.store.save_analyzer(analyzer)
         if profile["status"] == "ACTIVE" and self.analyzers[analyzer_id]["state"] == AnalyzerState.STANDBY:
             self._set_state(analyzer_id, AnalyzerState.IDLE)
             self.store.save_analyzer(self.analyzers[analyzer_id])
@@ -414,7 +568,7 @@ class SimulationEngine:
                 self.store.save_analyzer(self.analyzers[analyzer_id])
         return profile
 
-    def preview_protocol_profile(self, analyzer_id: str, payload: dict) -> dict:
+    def preview_protocol_profile(self, analyzer_id: str, payload: dict, event_type: str = "RESULT_FINAL", scenario: str = 'NORMAL') -> dict:
         if analyzer_id not in self.analyzers:
             raise ValueError("Unknown analyzer")
         payload = validate_profile(payload)
@@ -427,20 +581,22 @@ class SimulationEngine:
             "procedureName": "PRUEBA SIMULADA", "orderStatus": "CM",
         }
         results = [{"code": "TEST-001", "name": "Prueba simulada", "value": 3.97, "unit": "g/dL", "referenceRange": "3.5 - 5.0", "abnormalFlag": "N"}]
-        segments = ((payload.get("outbound") or {}).get("events", {}).get("RESULT_FINAL") or {}).get("segments", [])
-        if any(s.get("repeatBy") == "studies" for s in segments):
-            revision = self.catalog_revision(self.analyzers[analyzer_id].get("catalogRevisionId") or "builtin-v1")
+        segments = ((payload.get("outbound") or {}).get("events", {}).get(event_type) or {}).get("segments", [])
+        if any(s.get("repeatBy") == "studies" for s in segments) or 'catalog' in payload and payload['catalog']['studies']:
+            revision = ({**payload['catalog'], 'id': 'preview', 'version': 0} if 'catalog' in payload
+                        else self._effective_catalog(self.analyzers[analyzer_id]))
             sample["studies"] = bind_studies(revision, [{"key": str(i), "code": s["code"], "name": s["name"],
                 "orderId": sample["orderId"], "sampleId": sample["sampleId"]} for i, s in enumerate(revision["studies"])])
-            results = generate_results(sample["studies"])
-        message, control_id = build_profile_message(payload, self.analyzers[analyzer_id], sample, results, "RESULT_FINAL", self.store.next_sequence())
-        return {"message": message, "controlId": control_id}
+            results = generate_results(sample["studies"], scenario)
+        message, control_id = build_profile_message(payload, self.analyzers[analyzer_id], sample, results, event_type, self.store.next_sequence())
+        validate_outbound(message, payload, event_type, control_id)
+        return {"message": message, "controlId": control_id, 'results': results}
 
-    def infer_protocol_contract(self, analyzer_id: str, raw_message: str) -> dict:
+    def infer_protocol_contract(self, analyzer_id: str, raw_message: str, strict: bool = False) -> dict:
         if analyzer_id not in self.analyzers:
             raise ValueError("Unknown analyzer")
         raw_message = normalize_hl7(raw_message)
-        contract = infer_hl7_contract(raw_message)
+        contract = infer_hl7_contract(raw_message, strict=strict)
         return {
             "analyzerId": analyzer_id,
             "messageType": contract.get("messageType"),
@@ -459,7 +615,7 @@ class SimulationEngine:
             raise ValueError("Unknown analyzer")
         if analyzer["mode"] != AnalyzerMode.MANUAL:
             raise ValueError("Manual sample creation is disabled while analyzer is in BIDIRECTIONAL mode")
-        if analyzer.get("profile") != "ANAPATH" and not analyzer.get("catalogRevisionId"):
+        if analyzer.get("profile") != "ANAPATH" and not analyzer.get("catalogRevisionId") and 'catalog' not in (self.store.get_active_protocol_profile(analyzer['id']) or {}):
             unsupported = [test for test in payload["tests"] if test not in analyzer["supportedTests"]]
             if unsupported:
                 raise ValueError("Unsupported tests for analyzer: " + ", ".join(unsupported))
@@ -562,12 +718,13 @@ class SimulationEngine:
                 if not metadata.get("messageControlId") or not metadata.get("messageType") or "^" not in metadata["messageType"]:
                     raise HL7OrderError("Se requieren MSH-9 (tipo de mensaje) y MSH-10 (identificador) para recibir HL7")
                 if reception_mode(profile_inbound) == "LEARN":
-                    learned = {**profile_inbound, "schema": infer_hl7_contract(raw_message), "rawHL7": raw_message,
+                    learned = {**profile_inbound, "schema": infer_hl7_contract(raw_message, strict=False), "rawHL7": raw_message,
                                "messageType": metadata["messageType"], "receptionMode": "PERMISSIVE",
                                "validationMode": "WARN", "strictValidation": False,
                                "learnedAt": self._now(), "learnedFromMessageId": metadata["messageControlId"]}
                     active_profile = self._save_protocol_profile(analyzer_id, {
                         "name": active_profile["name"], "inbound": learned, "outbound": active_profile.get("outbound") or {},
+                        **({'catalog': active_profile['catalog']} if 'catalog' in active_profile else {}),
                         "activate": True, "revisionOf": active_profile["id"]})
                     profile_inbound = active_profile["inbound"]
                 # Non-order messages are received, acknowledged and traced. They
@@ -607,7 +764,7 @@ class SimulationEngine:
 
             if not permissive and analyzer.get("profile") == "ANAPATH":
                 validate_anapath_order(order_payload)
-            elif not permissive and analyzer.get("profile") != "PACS" and not analyzer.get("catalogRevisionId") and not analyzer.get("acceptUnknownTests"):
+            elif not permissive and analyzer.get("profile") != "PACS" and not analyzer.get("catalogRevisionId") and not analyzer.get("acceptUnknownTests") and 'catalog' not in (active_profile or {}):
                 unsupported = [
                     test
                     for test in order_payload["requestedTests"]
@@ -887,6 +1044,9 @@ class SimulationEngine:
             return dict(analyzer)
 
     def update_analyzer(self, analyzer_id: str, payload: dict) -> dict:
+        active = self.store.get_active_protocol_profile(analyzer_id)
+        if active and 'catalog' in active:
+            payload = {key: value for key, value in payload.items() if key not in {'supportedTests', 'acceptUnknownTests'}}
         with self._atomic():
             if analyzer_id not in self.analyzers:
                 raise ValueError("Unknown analyzer")
@@ -925,8 +1085,9 @@ class SimulationEngine:
                 try:
                     self._bind_order_catalog(order, self.analyzers[order["analyzerId"]])
                 except ValueError as error:
-                    raise ValueError("Orden recibida; configure y asigne los exámenes pendientes en el catálogo antes de procesar: "
+                    raise ValueError("Orden recibida; configure los estudios pendientes en el perfil del equipo antes de procesar: "
                                      + ", ".join(order["pendingCatalogStudies"])) from error
+                self._require_result_catalog(order)
             if result_scenario is not None and order.get("studies"):
                 allowed = {"NORMAL", *[name for study in order["studies"] for name in study["definition"].get("scenarios", {})]}
                 if result_scenario not in allowed:
@@ -1182,7 +1343,7 @@ class SimulationEngine:
             host = destination_host or analyzer["resultDestinationHost"]
             port = destination_port or analyzer["resultDestinationPort"]
             pending = order.get("pendingOutbound")
-            active_profile = self.store.get_active_protocol_profile(analyzer["id"])
+            active_profile = self._result_profile(order, analyzer)
             if analyzer["protocol"] == "HL7" and not outbound_ready(active_profile):
                 raise ValueError("Configure el contrato de salida antes de enviar resultados; la recepción permisiva o de aprendizaje solo habilita la entrada")
             if pending and pending.get("inFlight"):
@@ -1192,7 +1353,6 @@ class SimulationEngine:
                 profile_id, profile_version = pending.get("profileId"), pending.get("profileVersion")
             else:
                 sequence = self.store.next_sequence()
-                active_profile = self.store.get_active_protocol_profile(analyzer["id"])
                 if not ((active_profile or {}).get("outbound") or {}).get("events") and event_type != "REPORT" and analyzer.get("profile") != "ANAPATH":
                     raise ValueError("This event needs an explicit outbound profile definition")
                 if analyzer["protocol"] == "HL7" and (active_profile or {}).get("outbound", {}).get("events"):
@@ -1283,6 +1443,19 @@ class SimulationEngine:
             self.store.save_analyzer(self.analyzers[order["analyzerId"]])
             self._append_message(record)
             return {**dict(order), "lastMessage": record}
+
+    def _result_profile(self, order: dict, analyzer: dict) -> dict | None:
+        # An embedded catalog and its writer form one immutable equipment
+        # profile. Changing the active profile must not mix another writer
+        # into an already bound order, including retries after an ACK failure.
+        profile_id = order.get('catalogProfileId')
+        if profile_id:
+            profile = next((p for p in self.store.list_protocol_profiles(analyzer['id'])
+                            if p['id'] == profile_id and 'catalog' in p), None)
+            if profile is None:
+                raise ValueError('No se encontró el perfil asociado a los resultados de esta orden')
+            return profile
+        return self.store.get_active_protocol_profile(analyzer['id'])
 
     def _find_order(self, order_id: str) -> dict:
         for order in self.orders:

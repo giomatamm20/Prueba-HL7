@@ -223,6 +223,8 @@ def generate_results(studies, scenario="NORMAL", next_index=None):
 
         def walk(node, path="", instance="", parent=""):
             for parameter in node.get("parameters", []):
+                if not parameter.get('enabled', True):
+                    continue
                 key = path + parameter["code"]
                 generator = overrides.get("parameters", {}).get(key, parameter["generator"])
                 kind = generator["kind"]
@@ -258,7 +260,7 @@ def generate_results(studies, scenario="NORMAL", next_index=None):
     return results
 
 
-def infer_studies(raw_message):
+def infer_studies(raw_message, allow_orders=False):
     """Only structural OBX metadata is suggested; never retain patient/value data."""
     from .hl7_contract import canonical_message
     from .hl7_orders import segments_from_message, field, component
@@ -279,7 +281,7 @@ def infer_studies(raw_message):
             current["parameters"].append({"code": code, "name": component(field(row, 3), 1) or code,
                                            "valueType": field(row, 2) or "ST", "unit": field(row, 6) or "",
                                            "referenceRange": field(row, 7) or "", "generator": None})
-    if not studies or not any(s["parameters"] for s in studies):
+    if not studies or (not allow_orders and not any(s["parameters"] for s in studies)):
         raise ValueError("El ejemplo debe contener parámetros OBX")
     return {"studies": studies, "warning": "Sugerencias sin valores ni identificadores de pacientes. Configure cada generador antes de guardar; revise grupos repetidos manualmente."}
 

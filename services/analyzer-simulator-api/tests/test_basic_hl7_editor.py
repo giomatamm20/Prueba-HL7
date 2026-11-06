@@ -25,7 +25,7 @@ ORU = (
 class BasicHL7EditorTests(unittest.TestCase):
     def run_editor(self, values=None, edited=(), mode="apply", raw=ORM):
         static = Path(__file__).resolve().parents[1] / "app/static"
-        html = (static / "index.html").read_text(encoding="utf-8")
+        html = (Path(__file__).parent / "fixtures/profile_editor_v2.html").read_text(encoding="utf-8")
         conversion = html[html.index("    function structuredSchemaToOutboundSegments("):html.index("    function triggerAutoPreview(")]
         script = "const fs=require('fs');const input=JSON.parse(fs.readFileSync(0,'utf8'));global.window={};global.document={getElementById:()=>null};\n"
         script += (static / "basic-hl7.js").read_text(encoding="utf-8") + "\n" + conversion
