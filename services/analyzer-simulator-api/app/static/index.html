@@ -217,34 +217,37 @@
           <p id="configStatus" class="hint"></p>
         </article>
         <style>
-          .hl7-canvas { font-family: monospace; background:#1e1e1e; color:#ccc; padding:15px; border-radius:8px; line-height:2.6; overflow-x:auto; margin-top:10px; cursor:default; user-select:none; }
-          .hl7-segment { display:block; white-space:nowrap; border-bottom:1px solid #333; padding-bottom:8px; margin-bottom:8px;}
-          .hl7-field { padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; transition: all 0.2s; position:relative; display:inline-block; min-width: 25px; text-align: center; background:#2a2a2a;}
-          .hl7-field:hover { background: #444; border-color: #666; }
-          .hl7-pipe { color: #666; padding:0 4px;}
-          .hl7-badge { position:absolute; top:-24px; left:50%; transform:translateX(-50%); font-size:10px; background:#4CAF50; color:#fff; padding:3px 6px; border-radius:4px; font-weight:bold; white-space:nowrap; z-index:10; opacity:0.95; box-shadow:0 2px 4px rgba(0,0,0,0.3); pointer-events:none;}
-          .hl7-badge.outbound { background: #9C27B0; }
-          .hl7-badge.inbound-type { background: #E91E63; }
-          .hl7-popup { position:absolute; background:#fff; border:1px solid #ddd; box-shadow:0 4px 12px rgba(0,0,0,0.15); padding:10px; border-radius:8px; z-index:100; font-family:sans-serif; width:220px; }
-          .hl7-popup select { width:100%; margin:8px 0; padding:6px; border:1px solid #ccc; border-radius:4px; }
-          .hl7-popup .row-btns { display:flex; gap:5px; margin-top:5px; }
-          .hl7-popup button { flex:1; padding:6px; font-size:12px; }
-          .canvas-toolbar { display:flex; gap:10px; margin-bottom:10px; align-items:center; }
-          .canvas-toolbar button { padding: 4px 10px; font-size:13px; }
+          .hl7-popup { position:absolute; background:#fff; z-index:100; font-family:sans-serif; }
+          .hl7-popup .row-btns { display:flex; gap:5px; margin-top:5px; flex-wrap:wrap; }
+          .protocol-toolbar { display:flex; gap:10px; margin:14px 0; align-items:center; flex-wrap:wrap; }
           .legacy-mapping { display:none; }
           .basic-hl7{background:#f4f9fa;border:1px solid #dbe5e8;border-radius:10px;padding:16px;margin:16px 0}
           .basic-hl7 h3{margin:0 0 8px}.basic-mapping-table{width:100%;min-width:660px;border-collapse:collapse}.basic-mapping-table td,.basic-mapping-table th{padding:10px;border-bottom:1px solid #dbe5e8;text-align:left;vertical-align:top}.basic-mapping-table th{width:25%;font-size:13px}.basic-mapping-table input{width:100%}.basic-mapping-table small{display:block;overflow-wrap:anywhere}.basic-required{font-size:11px!important;font-weight:normal!important;display:flex!important;align-items:center;gap:5px}.basic-required input{width:auto!important}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
         </style>
         <article class="panel protocol">
-          <p class="section-label">Diseñador de protocolo</p><h2>Lienzo HL7 Interactivo</h2>
-          <p class="hint">Haz clic en los espacios del esqueleto HL7 para mapearlos. La vista previa se actualizará al instante.</p>
-          <div class="cols-2"><div><label>Analizador</label><select id="profileAnalyzer" onchange="onProtocolAnalyzerChanged()"></select></div><div><label>Nombre del perfil</label><input id="profileName" value="Perfil ORU estándar"></div></div>
+          <p class="section-label">Diseñador de protocolo</p><h2>Configurar contrato HL7</h2>
+          <p class="hint">Genera la base desde un mensaje del equipo, ajusta los campos básicos y guarda el perfil. La vista previa se actualiza con los cambios.</p>
+          <div class="cols-2"><div><label>Analizador</label><select id="profileAnalyzer" onchange="onProtocolAnalyzerChanged()"></select></div><div><label for="profileName">Nombre del perfil</label><input id="profileName" value="Perfil ORU estándar"></div></div>
           
           <section class="basic-hl7" aria-labelledby="basicHL7Title">
             <h3 id="basicHL7Title">Campos básicos del equipo</h3>
             <p class="hint">Después de generar la base desde un mensaje, revisa de dónde se lee cada dato y dónde se devuelve. Los campos de entrada y salida se configuran por separado.</p>
-            <p class="hint">Ejemplo: <strong>ORC-4.1</strong> lee el primer componente del campo 4 de ORC. En tu integración puede ser el identificador de la orden; <strong>OBR-4.1</strong> es otro campo. En entrada, separa alternativas por coma; en salida, indica los campos donde copiar el dato. Deja la salida vacía para no copiarlo.</p>
+            <p class="hint">Las ubicaciones pertenecen a este perfil y se pueden adaptar a cada equipo. Una ruta tiene el formato SEG-campo[repetición].componente.subcomponente; los índices empiezan en 1. En entrada, separa alternativas por coma; en salida, indica uno o varios destinos. Vacío omite ese dato en la salida. Los valores del ejemplo son solo una ayuda de lectura.</p>
+            <label for="basicHL7Event">Mensaje de salida que estás configurando</label><select id="basicHL7Event" onchange="window.basicHL7.selectEvent(this.value)"></select>
             <div style="overflow-x:auto"><table class="basic-mapping-table"><thead><tr><th>Dato</th><th>Leer del mensaje recibido</th><th>Devolver en el resultado</th></tr></thead><tbody id="basicHL7Rows"></tbody></table></div>
+            <details><summary>Añadir otro dato del equipo</summary>
+              <label for="basicHL7NewSource">Dato</label><select id="basicHL7NewSource">
+                <option value="patient.birthDate">Fecha de nacimiento</option><option value="patient.sex">Sexo</option><option value="patient.address">Dirección</option>
+                <option value="sample.code">Tipo de muestra: código</option><option value="sample.name">Tipo de muestra: nombre</option>
+                <option value="visit.number">Número de visita</option><option value="visit.type">Tipo de visita</option>
+                <option value="order.priority">Prioridad</option><option value="order.clinicalInfo">Información clínica</option>
+                <option value="custom">Dato propio del equipo</option>
+              </select>
+              <label for="basicHL7NewKey">Clave para un dato propio</label><input id="basicHL7NewKey" placeholder="Ej. referenciaExterna">
+              <label for="basicHL7NewLabel">Nombre para mostrar (opcional)</label><input id="basicHL7NewLabel" placeholder="Ej. Referencia externa">
+              <button type="button" class="ghost" onclick="window.basicHL7.addFieldFromForm()">+ Añadir dato</button>
+              <p id="basicHL7FieldStatus" class="hint" role="status"></p>
+            </details>
             <p class="hint">Guarda el perfil para aplicar estos cambios al equipo. Los valores leídos del ejemplo se muestran como ayuda; la respuesta conserva los datos de cada orden real.</p>
           </section>
 
@@ -258,63 +261,27 @@
              <input id="profileFixedMapping" value="{}">
           </div>
 
-          <div class="canvas-toolbar">
+          <div class="protocol-toolbar">
+              <div><label for="profileReceptionMode">Modo de recepción</label><select id="profileReceptionMode" onchange="onReceptionModeChanged()">
+                  <option value="CONTRACT">Por contrato</option>
+                  <option value="PERMISSIVE">Permisivo: recibir sin exigir contrato</option>
+                  <option value="LEARN">Aprender del primer mensaje externo</option>
+              </select></div>
               <label style="display:flex; align-items:center; gap:8px; cursor:pointer; background:#217a53; color:#fff; padding:4px 10px; border-radius:12px; font-size:11px; font-weight:bold;">
-                  <input type="checkbox" id="profileStrictValidation" checked> Estricta: rechazar incumplimientos. Desmarcada: advertencias.
+                  <input type="checkbox" id="profileStrictValidation" onchange="onStrictValidationChanged()" checked> Estricta: rechazar incumplimientos. Desmarcada: advertencias.
               </label>
-              <button class="ghost" type="button" onclick="loadCanvasTemplate('OML')">📄 Plantilla OML (Recibir)</button>
-              <button class="ghost" type="button" onclick="loadCanvasTemplate('ORU_NUMERIC')">📈 Plantilla ORU (Números)</button>
-              <button class="ghost" type="button" onclick="loadCanvasTemplate('ORU_PDF')">📑 Plantilla ORU (PDF)</button>
-              <button class="ghost" type="button" onclick="addCanvasSegment()">+ Añadir Segmento Libre</button>
               <div style="margin-left:auto; display:flex; gap:10px; align-items:center;">
                   <span id="badgeInbound" style="display:none; font-size:11px; background:#217a53; color:#fff; padding:3px 8px; border-radius:12px; font-weight:600;"><i class="fas fa-check-circle"></i> Inbound Guardado</span>
                   <span id="badgeOutbound" style="display:none; font-size:11px; background:#a76505; color:#fff; padding:3px 8px; border-radius:12px; font-weight:600;"><i class="fas fa-check-circle"></i> Outbound Guardado</span>
                   <button type="button" style="background:#176b7a;" onclick="openValidatorModal()">✨ Generar Contrato Semántico</button>
               </div>
           </div>
-          <div id="hl7Canvas" class="hl7-canvas"></div>
+          <p id="profileReceptionStatus" class="hint" role="status"></p>
           <details><summary>Salida avanzada: grupos de estudios y mapeos JSON</summary>
             <label><input type="checkbox" id="useAdvancedOutbound"> Usar esta definición completa de salida</label>
             <p class="hint">Los perfiles dinámicos conservan aquí su estructura anidada. OBR usa repeatBy: studies y sus OBX hijos usan repeatBy: results. Las fuentes result.valueType, result.hl7Value y result.subId conservan tipos y relaciones. Cuando está activo, este bloque define la salida al guardar.</p>
             <textarea id="advancedOutbound" rows="16" style="font-family:Consolas,monospace;width:100%" aria-label="Definición avanzada de salida"></textarea>
           </details>
-          
-          <div id="canvasPopup" class="hl7-popup" style="display:none;">
-              <h4 style="margin:0 0 5px 0; font-size:13px; color:#2196F3">Mapear <span id="popupFieldId"></span></h4>
-              <select id="popupVariableSelect" onchange="document.getElementById('popupFixedContainer').style.display = this.value === 'fixedValue' ? 'flex' : 'none'">
-                  <option value="">-- Ignorar / Vacío --</option>
-                  <optgroup label="Inbound (Lo que recibes)">
-                      <option value="profilePatientId">ID Paciente</option>
-                      <option value="profilePatientName">Nombre Paciente</option>
-                      <option value="profileOrderId">ID de Orden</option>
-                      <option value="profileFillerId">ID del laboratorio (filler)</option>
-                      <option value="profileSampleId">Código de Muestra</option>
-                      <option value="profileTestCode">Código de Examen</option>
-                      <option value="profileTestName">Nombre de Examen</option>
-                  </optgroup>
-                  <optgroup label="Outbound (Lo que respondes)">
-                      <option value="profileResultValue">Valor de Resultado</option>
-                      <option value="profileResultUnit">Unidad de Resultado</option>
-                      <option value="profileResultCode">Código de Resultado</option>
-                      <option value="profileResultDocument">Documento PDF (Base64)</option>
-                  </optgroup>
-                  <optgroup label="Avanzado">
-                      <option value="fixedValue">📌 Valor Fijo Personalizado</option>
-                  </optgroup>
-              </select>
-              <div style="font-size:11px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; padding: 0 2px">
-                  <label for="popupSubcomponent" style="margin:0; font-weight:normal">Subcomponente (opc.):</label>
-                  <input type="number" id="popupSubcomponent" min="1" max="9" placeholder="ej. 1" style="width:45px; padding:2px; font-size:11px">
-              </div>
-              <div id="popupFixedContainer" style="display:none; font-size:11px; margin-bottom:8px; align-items:center; justify-content:space-between; padding: 0 2px">
-                  <label for="popupFixedValue" style="margin:0; font-weight:normal">Valor Fijo:</label>
-                  <input type="text" id="popupFixedValue" placeholder="ej. HIS" style="width:90px; padding:2px; font-size:11px">
-              </div>
-              <div class="row-btns">
-                  <button type="button" onclick="applyCanvasPopup()">Aplicar</button>
-                  <button type="button" class="ghost" onclick="closeCanvasPopup()">Cancelar</button>
-              </div>
-          </div>
           
           <div id="validatorModal" class="hl7-popup" style="display:none; width:650px; max-width:95vw; max-height:85vh; overflow-y:auto; background:#fff; padding:20px; border-radius:12px; border:1px solid #dbe5e8; box-shadow:0 12px 36px rgba(0,0,0,0.15)">
               <h4 style="margin:0 0 10px 0; color:#176b7a; font-size:16px">✨ Auto-Generador de Contratos Semánticos</h4>
@@ -343,6 +310,8 @@
               <button class="ghost" onclick="loadProtocolProfiles()">Ver versiones guardadas</button>
           </div>
           <p id="profileStatus" class="hint"></p>
+          <p id="profileSaveState" class="hint" role="status"></p>
+          <p id="profilePreviewStatus" class="hint" role="status"></p>
           <div class="cols-2" style="margin-top:12px; align-items:stretch;">
               <div style="background:#f0f7f4; padding:10px; border-radius:6px; border:1px solid #c2d1c9; display:flex; flex-direction:column;">
                   <h4 style="margin-top:0; color:#176b7a; font-size:13px">📥 Contrato de Entrada (Inbound)</h4>
@@ -424,6 +393,25 @@
     let analyzerList = [];
     let orderList = [];
     let pacsStudyList = [];
+    let loadedProtocolAnalyzerId = null, loadingProtocolAnalyzerId = null, protocolRequestSequence = 0;
+    let protocolEditorDirty = false, protocolEditorGeneration = 0;
+    let protocolLearningPending = false;
+    function onReceptionModeChanged() {
+        const mode=el('profileReceptionMode').value;
+        if(mode!=='CONTRACT')el('profileStrictValidation').checked=false;
+        el('profileStrictValidation').disabled=mode!=='CONTRACT';
+        updateSemanticBadges();markProtocolEdited();
+    }
+    function onStrictValidationChanged() {
+        if(!el('profileStrictValidation').checked && !window.savedInboundSchema)el('profileReceptionMode').value='PERMISSIVE';
+        onReceptionModeChanged();
+    }
+    function markProtocolEdited() {
+        protocolEditorDirty=true;protocolEditorGeneration++;
+        el('profileSaveState').textContent='Cambios sin guardar. Se usará el nombre escrito en Nombre del perfil.';
+        triggerAutoPreview();
+    }
+    document.querySelector('.panel.protocol').addEventListener('input',markProtocolEdited);
 
     function showPage(page, button) {
       const titles = {
@@ -440,6 +428,7 @@
       document.body.dataset.page = page;
       el('compactNavigation').value = page;
       if (page === 'catalog') el('catalogFrame').contentWindow.postMessage({type:'refresh-analyzers'}, location.origin);
+      if (page === 'protocol') ensureProtocolProfileLoaded();
       document.querySelectorAll("[data-page-link]").forEach(item => item.classList.toggle("active", item === button));
       el("pageTitle").textContent = titles[page][0];
       el("pageDescription").textContent = titles[page][1];
@@ -462,8 +451,9 @@
     window.editingProfileId = null;
 
     function profileDefinition() {
+      const profileName=el('profileName').value.trim();
+      if(!profileName)throw Error('Escribe el nombre del perfil antes de guardar.');
       const type = el("profileMessageType").value.split("^");
-      const z = el("profileZSegment").value.trim();
       const inboundMapping = (target, id) => { const paths=el(id).value.split(",").map(x=>x.trim()).filter(Boolean); return {target,source:paths[0] || "",alternatives:paths.slice(1)}; };
       
       const outboundMapping = (source, id) => { 
@@ -486,32 +476,23 @@
           seg.fields.push(field);
       }
       
-      if (z && z.includes("-")) segments.push({name:z.split("-")[0].toUpperCase(),fields:[{target:z,sourceType:"fixed",value:"COMPATIBLE"}]});
-      const fixedStr = el("profileFixedMapping").value;
-      let fixedMap = {};
-      try { fixedMap = JSON.parse(fixedStr || "{}"); } catch(e){}
-      for (const [k, v] of Object.entries(fixedMap)) {
-          const segName = k.split("-")[0];
-          let seg = segments.find(s => s.name === segName && !s.repeatBy);
-          if(!seg) { seg = {name:segName, fields:[]}; segments.push(seg); }
-          seg.fields.push({target:k, sourceType:"fixed", value:v});
-      }
       if (window.savedOutboundSchema?.formatVersion === 2) {
           segments = structuredSchemaToOutboundSegments(window.savedOutboundSchema);
       }
       
       if (!window.savedOutboundSchema) segments.sort((a, b) => {
-          let idxA = canvasSegments.indexOf(a.name);
-          let idxB = canvasSegments.indexOf(b.name);
+          let idxA = protocolSegmentOrder.indexOf(a.name);
+          let idxB = protocolSegmentOrder.indexOf(b.name);
           if (idxA === -1) idxA = 999;
           if (idxB === -1) idxB = 999;
           return idxA - idxB;
       });
       
       const definition = {
-          name: el("profileName").value, 
+          name: profileName,
           activate: true, 
           inbound: {
+              receptionMode: el('profileReceptionMode').value,
               strictValidation: el("profileStrictValidation").checked,
               messageType: el("profileInboundType").value,
               schema: window.savedInboundSchema || null,
@@ -538,6 +519,12 @@
               }
           }
       };
+      if(window.savedProtocolDefinition){
+        definition.inbound={...structuredClone(window.savedProtocolDefinition.inbound || {}),...definition.inbound,
+          validationMode:el('profileStrictValidation').checked?'STRICT':'WARN'};
+        definition.outbound=structuredClone(window.savedProtocolDefinition.outbound || {});
+      }
+      if(window.generatedOutboundDefinition)definition.outbound=structuredClone(window.generatedOutboundDefinition);
       if (el('useAdvancedOutbound').checked) {
         definition.outbound = JSON.parse(el('advancedOutbound').value);
       }
@@ -548,16 +535,24 @@
         try {
             const analyzerId = el("profileAnalyzer").value;
             const definition = profileDefinition();
+            const savedGeneration=protocolEditorGeneration;
             const editing = window.editingProfileId;
             const profile = editing
                 ? await put(`/api/analyzers/${analyzerId}/protocol-profiles/${editing}`, definition)
                 : await post(`/api/analyzers/${analyzerId}/protocol-profiles`, definition);
+            if(analyzerId!==el('profileAnalyzer').value)return;
             window.editingProfileId = profile.id;
+            protocolLearningPending=profile.inbound?.receptionMode==='LEARN';
+            if(savedGeneration===protocolEditorGeneration){
+                protocolEditorDirty=false;el('profileName').value=profile.name;
+                el('profileSaveState').textContent=`Guardado: ${profile.name} · revisión ${profile.version}.`;
+            }else el('profileSaveState').textContent='La revisión enviada quedó guardada; hay cambios posteriores sin guardar.';
             el("saveProfileButton").textContent = `Actualizar ${profile.name} v${profile.version}`;
             el("profileStatus").textContent = editing
                 ? `Revisión ${profile.name} v${profile.version} creada; se conserva el contrato anterior.`
                 : `Perfil ${profile.name} v${profile.version} creado y activado.`;
-            if (profile.status !== "ACTIVE") el("profileStatus").textContent = "Borrador guardado. Completa entrada y salida para activar el equipo; permanece en STANDBY si no tiene otro contrato activo.";
+            if (profile.status !== "ACTIVE") el("profileStatus").textContent = "Borrador guardado. Completa los contratos o selecciona recepción permisiva / aprendizaje y guarda para activar.";
+            else if(protocolLearningPending)el('profileStatus').textContent=`${profile.name} v${profile.version} activo. Esperando el primer mensaje HL7 externo para generar una revisión semántica.`;
             await loadProtocolProfiles(false);
         } catch(error) {
             el("profileStatus").textContent = error.message;
@@ -566,18 +561,24 @@
 
     function startNewProtocolProfile() {
         resetProtocolProfile();
+        loadedProtocolAnalyzerId=el("profileAnalyzer").value;
         el("profileStatus").textContent = "Modo nuevo perfil: el próximo guardado creará una plantilla independiente.";
     }
 
     async function deleteProtocolProfile(id) {
-        if(!confirm("¿Estás seguro de eliminar esta versión del perfil?")) return;
+        const selected=(window.cachedProfiles || []).find(p=>p.id===id);
+        if(!selected)return;
+        const description=`${selected.name} v${selected.version}`;
+        if(!confirm(`¿Eliminar ${description}?${selected.status==='ACTIVE' ? ' Es el perfil activo: el equipo quedará en STANDBY hasta activar otro perfil completo.' : ''}`)) return;
         try {
             const analyzerId = el("profileAnalyzer").value;
             const response = await fetch(`/api/analyzers/${analyzerId}/protocol-profiles/${id}`, {method: "DELETE"});
             if (!response.ok) throw Error((await response.json()).detail || "No se pudo retirar el perfil");
-            if (window.editingProfileId === id) resetProtocolProfile();
-            el("profileStatus").textContent = "Perfil eliminado correctamente.";
-            loadProtocolProfiles();
+            const wasEditing=window.editingProfileId===id;
+            if(wasEditing)resetProtocolProfile();
+            await loadProtocolProfiles(wasEditing);
+            el("profileStatus").textContent = `Versión eliminada: ${description}.`;
+            await refresh();
         } catch(error) { el("profileStatus").textContent=error.message; }
     }
     
@@ -588,28 +589,31 @@
             hydrateProtocolProfile(p);
             window.editingProfileId = p.id;
             el("saveProfileButton").textContent = `Actualizar ${p.name} v${p.version}`;
-            el("profileStatus").textContent = `Editando ${p.name} v${p.version}. Guardar actualizará este mismo perfil.`;
-            renderCanvas();
+            el("profileStatus").textContent = `Editando ${p.name} v${p.version}. Guardar creará una nueva revisión.`;
             triggerAutoPreview();
         }
     }
 
-    async function previewProtocolProfile() {
+    async function previewProtocolProfile({automatic=false}={}) {
       try {
         const analyzerId=el("profileAnalyzer").value;
         const preview=await post(`/api/analyzers/${analyzerId}/protocol-profiles/preview`, profileDefinition());
         el("profilePreview").style.display="block";
         el("profilePreview").textContent=buildOutboundPreviewText(preview.message);
-        el("profilePreview").scrollIntoView({behavior:"smooth",block:"start"});
-        el("profileStatus").textContent="Vista previa generada con datos de prueba; no se envió ni guardó.";
-      } catch(error) { el("profileStatus").textContent=error.message; }
+        if(!automatic)el("profilePreview").scrollIntoView({behavior:"smooth",block:"start"});
+        el("profilePreviewStatus").textContent="Vista previa con datos de prueba; el estado de guardado se indica arriba.";
+      } catch(error) { el("profilePreviewStatus").textContent='Vista previa: '+error.message; }
     }
     function setProtocolPath(inputId, mappings, target, fallback="") {
       const mapping=(mappings || []).find(item=>item.target===target);
       el(inputId).value=mapping ? [mapping.source,...(mapping.alternatives || [])].filter(Boolean).join(", ") : fallback;
     }
     function hydrateProtocolProfile(profile) {
+      protocolEditorDirty=false;protocolEditorGeneration++;
+      el('profileSaveState').textContent=`Cargado: ${profile.name} · revisión ${profile.version}.`;
       const inbound=profile.inbound || {}, mappings=inbound.mappings || [];
+      window.savedProtocolDefinition=structuredClone(profile);
+      window.generatedOutboundDefinition=null;
       const event=Object.values(profile.outbound?.events || {})[0] || {}, segments=event.segments || [];
       el('advancedOutbound').value=JSON.stringify(profile.outbound || {}, null, 2);
       el('useAdvancedOutbound').checked=segments.some(s=>s.repeatBy==='studies' || s.children?.length);
@@ -630,27 +634,33 @@
       const sourceTarget=(name,source,fallback)=>segment(name).fields.find(item=>item.source===source)?.target || fallback;
       el("profileName").value=profile.name || "Perfil HL7"; el("profileInboundType").value=inbound.messageType || "OML^O21";
       el("profileStrictValidation").checked = inbound.strictValidation !== false;
+      el('profileReceptionMode').value=inbound.receptionMode || (!inbound.schema && inbound.strictValidation===false ? 'PERMISSIVE' : 'CONTRACT');
+      el('profileStrictValidation').disabled=el('profileReceptionMode').value!=='CONTRACT';
+      protocolLearningPending=el('profileReceptionMode').value==='LEARN';
       setProtocolPath("profilePatientId",mappings,"patient.id","PID-3"); setProtocolPath("profileOrderId",mappings,"order.id","ORC-2, OBR-2"); setProtocolPath("profileSampleId",mappings,"sample.id","SPM-2, OBR-3, ORC-3"); setProtocolPath("profileTestCode",mappings,"test.code","OBR-4.1"); setProtocolPath("profileTestName",mappings,"test.name","OBR-4.2");
       el("profileMessageType").value=event.messageType || `${field("MSH","MSH-9.1")?.value || "ORU"}^${field("MSH","MSH-9.2")?.value || "R01"}`; el("profileVersion").value=event.version || field("MSH","MSH-12")?.value || "2.5.1";
       el("profileResultValue").value=sourceTarget("OBX","result.value","OBX-5"); el("profileResultUnit").value=sourceTarget("OBX","result.unit","OBX-6"); el("profileResultCode").value=sourceTarget("OBX","result.code","OBX-3.1");
       const privateSegment=segments.find(item=>/^Z/.test(item.name)); el("profileZSegment").value=privateSegment?.fields?.[0]?.target || "";
       if (inbound.schema?.formatVersion === 2) {
           const inboundSegments = (inbound.schema.segments || []).map(item => item.name).filter(Boolean);
-          if (inboundSegments.length) canvasSegments = [...new Set(inboundSegments)];
+          if (inboundSegments.length) protocolSegmentOrder = [...new Set(inboundSegments)];
       }
       
       const z = el("profileZSegment").value;
       if (z) {
           const seg = z.split("-")[0];
-          if (!canvasSegments.includes(seg)) canvasSegments.push(seg);
+          if (!protocolSegmentOrder.includes(seg)) protocolSegmentOrder.push(seg);
       }
       window.basicHL7.load(profile);
-      renderCanvas();
       triggerAutoPreview();
       updateSemanticBadges();
     }
     function resetProtocolProfile() {
+      protocolEditorDirty=false;protocolEditorGeneration++;
+      el('profileSaveState').textContent='';
       window.editingProfileId = null;
+      window.savedProtocolDefinition=null;
+      window.generatedOutboundDefinition=null;
       el('useAdvancedOutbound').checked=false;
       el('advancedOutbound').value='';
       if (el("saveProfileButton")) el("saveProfileButton").textContent = "Guardar perfil nuevo";
@@ -660,26 +670,30 @@
       window.savedOutboundRawHL7 = null;
       window.strictRequiredFields = [];
       el("profileStrictValidation").checked = true;
+      el('profileReceptionMode').value='CONTRACT';el('profileStrictValidation').disabled=false;protocolLearningPending=false;
       el("profileName").value="Perfil ORU estándar"; el("profileInboundType").value="OML^O21"; el("profileMessageType").value="ORU^R01"; el("profileVersion").value="2.5.1";
       el("profilePatientId").value="PID-3"; el("profileOrderId").value="ORC-2, OBR-2, OBR-3"; el("profileSampleId").value="SPM-2, OBR-3, ORC-3"; el("profileTestCode").value="OBR-4.1"; el("profileTestName").value="OBR-4.2";
       el("profileResultValue").value="OBX-5"; el("profileResultUnit").value="OBX-6"; el("profileResultCode").value="OBX-3.1"; el("profileZSegment").value="";
       window.basicHL7.reset();
-      canvasSegments = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM", "OBX"];
-      renderCanvas();
+      protocolSegmentOrder = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM", "OBX"];
       triggerAutoPreview();
       updateSemanticBadges();
     }
     async function onProtocolAnalyzerChanged() { 
+        protocolEditorDirty=false;protocolEditorGeneration++;
         window.editingProfileId = null;
         if (el("saveProfileButton")) el("saveProfileButton").textContent = "Guardar perfil nuevo";
         await loadProtocolProfiles(true); 
-        renderCanvas();
         triggerAutoPreview();
     }
 
     async function activateProtocolProfile(id) {
         const profile = (window.cachedProfiles || []).find(item => item.id === id);
         if (!profile || profile.status === "ACTIVE") return;
+        if(id===window.editingProfileId && protocolEditorDirty){
+            if(confirm('Hay cambios sin guardar en esta versión. ¿Guardar una nueva revisión con estos cambios y activarla?'))await saveProtocolProfile();
+            return;
+        }
         if (!confirm(`¿Activar ${profile.name} v${profile.version}? El perfil activo actual será archivado.`)) return;
         try {
             const analyzerId = el("profileAnalyzer").value;
@@ -694,6 +708,7 @@
     }
 
     function renderProtocolProfileCard(profile) {
+        if(profile.status==='RETIRED')return '';
         const active = profile.status === "ACTIVE";
         const cardStyle = active
             ? "position:relative; border:2px solid #217a53; background:#f0f7f4"
@@ -715,17 +730,35 @@
         </div>`;
     }
 
+    function ensureProtocolProfileLoaded() {
+        const id=el('profileAnalyzer').value;
+        if(protocolLearningPending && !protocolEditorDirty && loadingProtocolAnalyzerId!==id && analyzerList.find(a=>a.id===id)?.activeProtocolProfileId!==window.editingProfileId)return loadProtocolProfiles(true);
+        if(id && !protocolEditorDirty && loadedProtocolAnalyzerId!==id && loadingProtocolAnalyzerId!==id)return loadProtocolProfiles(true);
+    }
+
     async function loadProtocolProfiles(hydrate=false) { 
+        const analyzerId=el('profileAnalyzer').value;
+        if(!analyzerId)return;
+        const requestSequence=++protocolRequestSequence;
+        const editorGeneration=protocolEditorGeneration;
+        if(hydrate)loadingProtocolAnalyzerId=analyzerId;
         try { 
-            const profiles=await get(`/api/analyzers/${el("profileAnalyzer").value}/protocol-profiles`); 
+            const profiles=(await get(`/api/analyzers/${encodeURIComponent(analyzerId)}/protocol-profiles`)).filter(p=>p.status!=='RETIRED');
+            if(analyzerId!==el('profileAnalyzer').value || requestSequence!==protocolRequestSequence)return;
             const active=profiles.find(p=>p.status==="ACTIVE"); 
             window.cachedProfiles = profiles;
-            if (hydrate) { 
-                if (active) { hydrateProtocolProfile(active); el("profileStatus").textContent=`Perfil activo cargado: ${active.name} v${active.version}. Pulsa Editar para modificarlo.`; } 
-                else { resetProtocolProfile(); el("profileStatus").textContent="Este analizador no tiene un perfil HL7 guardado todavía."; } 
+            if (hydrate && editorGeneration===protocolEditorGeneration) {
+                const saved=active || profiles.filter(p=>p.status==='DRAFT').sort((a,b)=>b.version-a.version)[0];
+                if (saved) {
+                    hydrateProtocolProfile(saved);window.editingProfileId=saved.id;
+                    el('saveProfileButton').textContent=`Actualizar ${saved.name} v${saved.version}`;
+                    el("profileStatus").textContent=`${active ? 'Perfil activo' : 'Borrador guardado'} cargado: ${saved.name} v${saved.version}. Guardar creará una nueva revisión.`;
+                } else { resetProtocolProfile(); el("profileStatus").textContent="Este analizador no tiene un perfil HL7 guardado todavía."; }
+                loadedProtocolAnalyzerId=analyzerId;
             } 
             el("profileVersions").innerHTML=profiles.map(renderProtocolProfileCard).join("") || '<div class="custom-map-empty">Este analizador aún no tiene perfiles versionados.</div>'; 
-        } catch(error) { el("profileStatus").textContent=error.message; } 
+        } catch(error) { if(analyzerId===el('profileAnalyzer').value)el("profileStatus").textContent=error.message; }
+        finally { if(loadingProtocolAnalyzerId===analyzerId)loadingProtocolAnalyzerId=null; }
     }
 
     async function createSample() {
@@ -1026,7 +1059,8 @@
       if (configuredSelection) el("cfgExistingAnalyzer").value = configuredSelection;
       const profileSelection = el("profileAnalyzer").value;
       el("profileAnalyzer").innerHTML = analyzers.map(a => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.id)}</option>`).join("");
-      if (profileSelection) el("profileAnalyzer").value = profileSelection;
+      if (analyzers.some(a=>a.id===profileSelection)) el("profileAnalyzer").value = profileSelection;
+      ensureProtocolProfileLoaded();
       el("mAnalyzers").textContent = dash.analyzerCount;
       el("mListeners").textContent = dash.activeListenerCount;
       el("mPending").textContent = dash.pendingOrderCount;
@@ -1044,7 +1078,8 @@
         <div class="row"><h3>${esc(a.name)}</h3><span class="state ${esc(a.state)}">${esc(a.state)}</span><span class="state">${esc(a.mode)}</span></div>
         ${analyzerActions(a)}
         <div class="mini">${esc(a.vendor)} - ${esc(a.protocol)} / ${esc(a.transport)} / ${esc(a.profile || "GENERIC")} - listener ${a.listenerActive ? "ON" : "OFF"} ${esc(a.listenerHost || "")}</div>
-        ${a.protocol === "HL7" && !a.contractReady ? '<div class="hint">STANDBY: completa y activa los contratos de entrada y salida en el editor HL7.</div>' : ""}
+        ${a.protocol === "HL7" && !a.contractReady ? '<div class="hint">STANDBY: activa un perfil por contrato, permisivo o de aprendizaje en el Diseñador HL7.</div>' : ""}
+        ${a.learningPending ? '<div class="hint">Aprendizaje activo: esperando el primer mensaje HL7 externo.</div>' : a.receptionMode==='PERMISSIVE' && a.contractReady ? '<div class="hint">Recepción HL7 permisiva activa.</div>' : ""}
         <div class="mini">Destino: ${esc(a.resultDestinationHost)}:${esc(a.resultDestinationPort)} | ACK: ${esc(a.lastAckCode || "-")} | Escenario: ${esc(a.scenario || "NORMAL")}</div>
         <div class="mini">HL7 acepta: ${esc((a.behavior?.acceptedMessageTypes || []).join(", ") || "-")} | Requeridos: ${esc((a.behavior?.requiredFields || []).join(", ") || "-")}</div>
         <div class="bar"><span style="width:${Number(a.progress || 0)}%"></span></div>
@@ -1107,142 +1142,9 @@
 
     refresh();
     setInterval(refresh, 4000);
-    // --- HL7 Canvas Logic ---
-    let canvasSegments = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM", "OBX"];
-    let activePopupField = null;
+    // Semantic contracts and message previews.
+    let protocolSegmentOrder = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM", "OBX"];
     let previewTimeout = null;
-    
-    function renderCanvas() {
-        const container = el("hl7Canvas");
-        if(!container) return;
-        container.innerHTML = "";
-        
-        const pathMap = {};
-        ["profilePatientId", "profilePatientName", "profileOrderId", "profileFillerId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
-            const paths = el(id).value.split(",").map(x => x.trim()).filter(Boolean);
-            paths.forEach(p => {
-                if (!pathMap[p]) pathMap[p] = [];
-                pathMap[p].push(id);
-            });
-        });
-        const fixedStr = el("profileFixedMapping").value;
-        let fixedMap = {};
-        try { fixedMap = JSON.parse(fixedStr || "{}"); } catch(e){}
-        for (const [k, v] of Object.entries(fixedMap)) {
-            if (!pathMap[k]) pathMap[k] = [];
-            pathMap[k].push(`FIXED:${v}`);
-        }
-
-        const getBadge = (basePath) => {
-            const matchedKeys = Object.keys(pathMap).filter(k => k === basePath || k.startsWith(basePath + "."));
-            const requiredKeys = (window.strictRequiredFields || []).filter(k => k === basePath || k.startsWith(basePath + "."));
-            if (matchedKeys.length === 0 && requiredKeys.length === 0) return "";
-            
-            const labels = [];
-            requiredKeys.forEach(k => {
-                const subExt = k.includes(".") ? `[.${k.split(".")[1]}] ` : "";
-                labels.push(`<div class="hl7-badge" style="background:#bc3d3d; border-color:#842222; margin-bottom:2px">🚨 REQ ${subExt}</div>`);
-            });
-            
-            matchedKeys.forEach(k => {
-                const subExt = k.includes(".") ? `[.${k.split(".")[1]}] ` : "";
-                pathMap[k].forEach(id => {
-                    if (id.startsWith("FIXED:")) {
-                        labels.push(`<div class="hl7-badge outbound" style="background:#607D8B; border-color:#455A64">📌 ${subExt}${id.substring(6)}</div>`);
-                        return;
-                    }
-                    let text = id.replace("profile", "");
-                    let type = id.includes("Result") || id.includes("MessageType") ? "outbound" : "inbound";
-                    labels.push(`<div class="hl7-badge ${type}">${subExt}${text}</div>`);
-                });
-            });
-            return labels.join("");
-        };
-
-        canvasSegments.forEach(seg => {
-            const row = document.createElement("div");
-            row.className = "hl7-segment";
-            let controls = "";
-            if (seg !== "MSH") {
-                controls = `<div class="seg-controls"><button onclick="moveSegmentUp('${seg}')" title="Subir">⬆️</button><button onclick="moveSegmentDown('${seg}')" title="Bajar">⬇️</button></div>`;
-            }
-            row.innerHTML = `<div class="seg-label">${controls}<span class="hl7-field" onclick="openCanvasPopup(event, '${seg}')">${seg}</span></div>`;
-            
-            let maxFields = seg === "MSH" ? 25 : 30;
-            let start = seg === "MSH" ? 2 : 1;
-            
-            for (let i = start; i <= maxFields; i++) {
-                const path = `${seg}-${i}`;
-                row.innerHTML += `<span class="hl7-pipe">|</span><span class="hl7-field" onclick="openCanvasPopup(event, '${path}')">${getBadge(path)}&nbsp;&nbsp;&nbsp;&nbsp;</span>`;
-            }
-            container.appendChild(row);
-        });
-    }
-
-    function moveSegmentUp(seg) {
-        const idx = canvasSegments.indexOf(seg);
-        if (idx > 1) {
-            const temp = canvasSegments[idx-1];
-            canvasSegments[idx-1] = canvasSegments[idx];
-            canvasSegments[idx] = temp;
-            renderCanvas();
-            triggerAutoPreview();
-        }
-    }
-
-    function moveSegmentDown(seg) {
-        const idx = canvasSegments.indexOf(seg);
-        if (idx > 0 && idx < canvasSegments.length - 1) {
-            const temp = canvasSegments[idx+1];
-            canvasSegments[idx+1] = canvasSegments[idx];
-            canvasSegments[idx] = temp;
-            renderCanvas();
-            triggerAutoPreview();
-        }
-    }
-
-    function openCanvasPopup(e, path) {
-        activePopupField = path;
-        el("popupFieldId").textContent = path;
-        const popup = el("canvasPopup");
-        popup.style.display = "block";
-        popup.style.left = Math.min(e.pageX - 110, window.innerWidth - 240) + "px";
-        popup.style.top = (e.pageY + 15) + "px";
-        
-        const select = el("popupVariableSelect");
-        const subInput = el("popupSubcomponent");
-        const fixInput = el("popupFixedValue");
-        select.value = "";
-        if(subInput) subInput.value = "";
-        if(fixInput) fixInput.value = "";
-        const fixedContainer = document.getElementById('popupFixedContainer');
-        if(fixedContainer) fixedContainer.style.display = 'none';
-
-        ["profilePatientId", "profilePatientName", "profileOrderId", "profileFillerId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
-            if(!el(id)) return;
-            let val = el(id).value.split(",").map(x=>x.trim());
-            const matched = val.find(v => v === path || v.startsWith(path + "."));
-            if (matched) {
-                select.value = id;
-                if (matched.includes(".") && subInput) subInput.value = matched.split(".")[1];
-            }
-        });
-        const fixedStr = el("profileFixedMapping").value;
-        let fixedMap = {};
-        try { fixedMap = JSON.parse(fixedStr || "{}"); } catch(e){}
-        const matchedFixed = Object.keys(fixedMap).find(k => k === path || k.startsWith(path + "."));
-        if (matchedFixed) {
-            select.value = "fixedValue";
-            if(fixInput) fixInput.value = fixedMap[matchedFixed];
-            if(fixedContainer) fixedContainer.style.display = 'flex';
-            if (matchedFixed.includes(".") && subInput) subInput.value = matchedFixed.split(".")[1];
-        }
-    }
-
-    function closeCanvasPopup() {
-        activePopupField = null;
-        el("canvasPopup").style.display = "none";
-    }
 
     window.strictRequiredFields = [];
     function openValidatorModal() {
@@ -1278,6 +1180,7 @@
         button.textContent = "Analizando…";
         try {
             const inferred = await post(`/api/analyzers/${analyzerId}/protocol-profiles/infer`, {rawMessage:text});
+            el('validatorText').value=inferred.rawMessage || text;
             window.currentSemanticTree = inferred.schema;
             el('semanticTreeCode').value = JSON.stringify(inferred.schema, null, 2);
             el('semanticTreeContainer').style.display = 'block';
@@ -1331,30 +1234,39 @@
             window.savedInboundRawHL7 = el('validatorText').value.trim() || null;
             window.strictRequiredFields = requiredPathsFromContract(window.currentSemanticTree);
             if (inferredType) el("profileInboundType").value = inferredType;
-            if (inferredSegments.length) canvasSegments = [...new Set(inferredSegments)];
+            if (inferredSegments.length) protocolSegmentOrder = [...new Set(inferredSegments)];
             applySuggestedInboundMappings(window.currentSemanticTree);
             window.basicHL7.updateExamples();
-            renderCanvas();
             alert("Contrato Inbound guardado en memoria (" + el("profileInboundType").value + "). Haz clic en 'Guardar Perfil' para persistirlo.");
         } else {
             window.savedOutboundSchema = window.currentSemanticTree;
             window.savedOutboundRawHL7 = el('validatorText').value.trim() || null;
-            window.basicHL7.readOutbound({events:{RESULT_FINAL:{segments:structuredSchemaToOutboundSegments(window.currentSemanticTree)}}});
+            const eventName=window.basicHL7.currentEvent();
+            const outbound=structuredClone(window.generatedOutboundDefinition || window.savedProtocolDefinition?.outbound || {});
+            outbound.events ||= {};
+            outbound.events[eventName]={...(outbound.events[eventName] || {}),messageType:inferredType,
+                schema:window.currentSemanticTree,segments:structuredSchemaToOutboundSegments(window.currentSemanticTree)};
+            if(Object.keys(outbound.events).length===1)outbound.schema=window.currentSemanticTree;
+            outbound.rawHL7=window.savedOutboundRawHL7;
+            window.generatedOutboundDefinition=outbound;
+            el('advancedOutbound').value=JSON.stringify(outbound,null,2);
+            window.basicHL7.readOutbound(outbound);
             if (inferredType) el("profileMessageType").value = inferredType;
             
-            // Actualizar Lienzo con los segmentos del Outbound schema
+            // Conservar el orden de segmentos del contrato de salida
             const segOrder = ["MSH","EVN","PID","PV1","ORC","OBR","TXA","OBX","SPM"];
             const allSegs = inferredSegments.length ? inferredSegments : Object.keys(window.currentSemanticTree);
             const ordered = segOrder.filter(s => allSegs.includes(s)).concat(allSegs.filter(s => !segOrder.includes(s)));
             
-            canvasSegments.length = 0;
-            ordered.forEach(s => canvasSegments.push(s));
+            protocolSegmentOrder.length = 0;
+            ordered.forEach(s => protocolSegmentOrder.push(s));
             
-            renderCanvas();
             triggerAutoPreview();
             
-            alert("Contrato Outbound aplicado al Lienzo (" + el("profileMessageType").value + "). Haz clic en 'Guardar Perfil' para persistirlo.");
+            alert("Contrato Outbound aplicado al perfil (" + el("profileMessageType").value + "). Haz clic en 'Guardar Perfil' para persistirlo.");
         }
+        markProtocolEdited();
+        triggerAutoPreview();
         closeValidatorModal();
         updateSemanticBadges();
     }
@@ -1389,20 +1301,12 @@
     }
 
     function applySuggestedInboundMappings(schema) {
-        if (!schema || schema.formatVersion !== 2) return;
-        if (contractHasField(schema, "PID", 3)) el("profilePatientId").value = "PID-3[1].1";
-        if (contractHasField(schema, "PID", 5)) el("profilePatientName").value = "PID-5";
-        if (contractHasField(schema, "ORC", 2)) el("profileOrderId").value = "ORC-2[1].1";
-        else if (contractHasField(schema, "OBR", 2)) el("profileOrderId").value = "OBR-2[1].1";
-        if (contractHasField(schema, "SPM", 2)) el("profileSampleId").value = "SPM-2[1].1";
-        else if (contractHasField(schema, "OBR", 3)) el("profileSampleId").value = "OBR-3[1].1";
-        if (contractHasField(schema, "OBR", 4)) {
-            el("profileTestCode").value = "OBR-4[1].1";
-            el("profileTestName").value = "OBR-4[1].2";
-        }
+        window.basicHL7.suggestInbound(schema);
     }
     
     function updateSemanticBadges() {
+        const mode=el('profileReceptionMode').value;
+        el('profileReceptionStatus').textContent=mode==='LEARN' ? 'Al guardar y activar, se abre la recepción y se espera el primer HL7 válido. Se guardará una revisión semántica editable, conservando la salida. Luego continuará en modo permisivo.' : mode==='PERMISSIVE' ? 'Recibe HL7 válido sin exigir contrato ni catálogo. Las órdenes van a la cola; otros tipos quedan en Mensajes. Enviar resultados requiere configurar la salida y los exámenes.' : 'Aplica el contrato de entrada y sus reglas. Para activar este modo se requieren entrada y salida completas.';
         el('badgeInbound').style.display = window.savedInboundSchema ? 'inline-block' : 'none';
         el('badgeOutbound').style.display = window.savedOutboundSchema ? 'inline-block' : 'none';
         
@@ -1411,7 +1315,7 @@
                 const base = window.savedInboundRawHL7 ? "MENSAJE BASE\n" + window.savedInboundRawHL7.replace(/\r/g,"\n") + "\n\n" : "";
                 el('previewInboundBox').textContent = base + "CONTRATO APLICADO\n" + rebuildHL7FromSchema(window.savedInboundSchema).replace(/\r/g,"\n");
             } else {
-                el('previewInboundBox').textContent = "(Sin contrato Inbound cargado.\n\nEl simulador operará en modo permisivo.\n\nPara imponer reglas, abre el Cerebro Semántico, analiza una muestra y dale a Guardar como Contrato Inbound.)";
+                el('previewInboundBox').textContent = mode==='LEARN' ? 'Esperando el primer mensaje HL7 externo después de guardar y activar el perfil.' : mode==='PERMISSIVE' ? 'Sin contrato de entrada. Al guardar y activar, se habilita la recepción permisiva.' : 'Sin contrato de entrada. Genera una base semántica o selecciona modo permisivo / aprendizaje para recibir sin contrato.';
             }
         }
         if (el('profilePreview') && window.savedOutboundSchema) {
@@ -1523,11 +1427,15 @@
             const common = {
                 SENDING_APPLICATION:{source:"analyzer.id"}, MESSAGE_DATETIME:{source:"system.timestamp"},
                 MESSAGE_CONTROL_ID:{source:"system.messageId"}, PATIENT_IDENTIFIER:{source:"patient.id"},
+                SENDING_FACILITY:{source:"analyzer.vendor"}, RECEIVING_APPLICATION:{source:"inbound.MSH-3"}, RECEIVING_FACILITY:{source:"inbound.MSH-4"},
                 FAMILY_NAME:{source:"patient.name",transform:"component1"}, GIVEN_NAME:{source:"patient.name",transform:"component2"},
+                BIRTH_DATE:{source:"patient.birthDate"}, ADMINISTRATIVE_SEX:{source:"patient.sex"}, PATIENT_CLASS:{source:"visit.type"},
                 PLACER_ORDER_NUMBER:{source:"order.id"}, FILLER_ORDER_NUMBER:{source:"order.fillerId"},
                 SPECIMEN_IDENTIFIER:{source:"sample.id"}, TEST_CODE:{source:"test.code"}, TEST_NAME:{source:"test.name"},
+                SPECIMEN_TYPE_CODE:{source:"sample.code"}, SPECIMEN_TYPE_NAME:{source:"sample.name"},
                 SET_ID:{source:"counter"}, OBSERVATION_VALUE:{source:"result.value"}, UNITS:{source:"result.unit"},
-                REFERENCE_RANGE:{source:"result.referenceRange"}, ABNORMAL_FLAGS:{source:"result.abnormalFlag"}
+                REFERENCE_RANGE:{source:"result.referenceRange"}, ABNORMAL_FLAGS:{source:"result.abnormalFlag"},
+                VALUE_TYPE:{source:"result.valueType"}, OBSERVATION_STATUS:{source:"result.status"}
             };
             if (segmentName === "OBX" && semantic === "OBSERVATION_IDENTIFIER") return {source:"result.code"};
             if (segmentName === "OBX" && semantic === "OBSERVATION_TEXT") return {source:"result.name"};
@@ -1536,10 +1444,12 @@
         const fieldFromRule = (target, rule, segmentName) => {
             if (Object.prototype.hasOwnProperty.call(rule, "const")) return {target,sourceType:"fixed",value:String(rule.const)};
             if (rule.source) return {target,source:rule.source,required:!!rule.required,...(rule.transform ? {transform:rule.transform} : {}),...(rule.default !== undefined ? {default:rule.default} : {})};
-            if (rule.semantic === "OBSERVATION_TEXT") return {target,sourceType:"fixed",value:String(rule.example || "")};
+            if(['PATIENT_IDENTIFIER','FAMILY_NAME','GIVEN_NAME'].includes(rule.semantic) && Number(/\[(\d+)\]/.exec(target)?.[1] || 1)>1)return {target,source:'inbound.'+target,required:!!rule.required};
             const dynamic = dynamicSource(rule.semantic, segmentName);
-            if (dynamic) return {target,...dynamic,required:!!rule.required,...(rule.default !== undefined ? {default:rule.default} : {})};
-            return {target,sourceType:"fixed",value:String(rule.example || "")};
+            if (dynamic) return {target,...dynamic,required:!!rule.required,...(rule.default !== undefined ? {default:rule.default} : ['VALUE_TYPE','OBSERVATION_STATUS','SENDING_FACILITY'].includes(rule.semantic)?{default:String(rule.example || '')}:{})};
+            // An example is never an implicit fixed value. Unknown fields read
+            // from the current order; only an explicit const pins a value.
+            return {target,source:'inbound.'+target,required:false};
         };
         return (schema.segments || []).map(segment => {
             const output = {name:segment.name,fields:[]};
@@ -1568,150 +1478,11 @@
     }
 
 
-    function updateSavedOutboundRule(path, source, fixedValue) {
-        const schema = window.savedOutboundSchema;
-        if (schema?.formatVersion !== 2) return;
-        const match = /^([A-Z0-9]{3})-(\d+)(?:\[(\d+)\])?(?:\.(\d+))?(?:\.(\d+))?$/.exec(path);
-        if (!match) return;
-        const [, name, fieldNumber, repetitionNumber, componentNumber, subNumber] = match;
-        let segment = schema.segments.find(s => s.name === name);
-        if (!segment) { segment = {name, min:1, max:1, fields:{}}; schema.segments.push(segment); }
-        const field = segment.fields[fieldNumber] ||= {required:true,minRepetitions:1,maxRepetitions:1,composite:false,repetitions:[]};
-        const repIndex = Number(repetitionNumber || 1);
-        let repetition = field.repetitions.find(r => (r.index || 1) === repIndex);
-        if (!repetition) { repetition = {index:repIndex,components:{}}; field.repetitions.push(repetition); }
-        field.maxRepetitions = Math.max(Number(field.maxRepetitions) || 1, repIndex);
-        if (!componentNumber && !subNumber) {
-            repetition.components = {};
-            const parts = source === "patient.name" ? ["component1", "component2"] : source ? [null] : String(fixedValue).split("^");
-            parts.forEach((part,index) => {
-                repetition.components[String(index+1)] = source
-                    ? {required:true,source,...(part ? {transform:part} : {})}
-                    : {required:true,const:part,example:part,datatype:"ST"};
-            });
-            field.composite = parts.length > 1;
-        } else {
-            field.composite = true;
-            let components = repetition.components;
-            let number = componentNumber || "1";
-            if (subNumber) {
-                const parent = components[number] ||= {required:true,subcomponents:{}};
-                components = parent.subcomponents ||= {};
-                number = subNumber;
-            }
-            components[number] = source ? {required:true,source} : {required:true,const:String(fixedValue),example:String(fixedValue),datatype:"ST"};
-        }
-    }
-
-    function applyCanvasPopup() {
-        if (!activePopupField) return;
-        const select = el("popupVariableSelect");
-        const chosenId = select.value;
-        
-        let targetPath = activePopupField;
-        const subInput = el("popupSubcomponent");
-        const subValue = subInput ? subInput.value : "";
-        if (subValue && subValue > 0) {
-            targetPath = activePopupField + "." + subValue;
-        }
-
-        ["profilePatientId", "profilePatientName", "profileOrderId", "profileFillerId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
-            if(!el(id)) return;
-            let paths = el(id).value.split(",").map(x => x.trim()).filter(Boolean);
-            paths = paths.filter(p => p !== activePopupField && !p.startsWith(activePopupField + "."));
-            el(id).value = paths.join(", ");
-        });
-        
-        const fixedStr = el("profileFixedMapping").value;
-        let fixedMap = {};
-        try { fixedMap = JSON.parse(fixedStr || "{}"); } catch(e){}
-        Object.keys(fixedMap).forEach(k => {
-            if (k === activePopupField || k.startsWith(activePopupField + ".")) delete fixedMap[k];
-        });
-        
-        if (chosenId && chosenId !== "fixedValue") {
-            let paths = el(chosenId).value.split(",").map(x => x.trim()).filter(Boolean);
-            if (!paths.includes(targetPath)) paths.push(targetPath);
-            el(chosenId).value = paths.join(", ");
-        } else if (chosenId === "fixedValue") {
-            fixedMap[targetPath] = el("popupFixedValue").value || "FIJO";
-        }
-        el("profileFixedMapping").value = JSON.stringify(fixedMap);
-        const sources = {profilePatientId:"patient.id",profilePatientName:"patient.name",profileOrderId:"order.id",
-            profileFillerId:"order.fillerId",profileSampleId:"sample.id",profileTestCode:"test.code",profileTestName:"test.name",profileResultValue:"result.value",
-            profileResultCode:"result.code",profileResultUnit:"result.unit",profileResultDocument:"resultDocument.pdfBase64"};
-        if (chosenId === "fixedValue") updateSavedOutboundRule(targetPath, null, fixedMap[targetPath]);
-        else if (sources[chosenId] && !window.basicHL7.fields.some(f=>f.input===chosenId)) updateSavedOutboundRule(targetPath, sources[chosenId]);
-
-        
-        closeCanvasPopup();
-        renderCanvas();
-        triggerAutoPreview();
-    }
-
-    function addCanvasSegment() {
-        const z = prompt("Ingresa el nombre del segmento (ej. NTE, TQ1, ZEQ)");
-        if (z && z.length === 3) {
-            const seg = z.toUpperCase();
-            if (!canvasSegments.includes(seg)) {
-                canvasSegments.push(seg);
-                renderCanvas();
-                triggerAutoPreview();
-            }
-        }
-    }
-
-    function loadCanvasTemplate(type) {
-        if (type === 'OML') {
-            el("profileInboundType").value = "OML^O21";
-            el("profileMessageType").value = "";
-            el("profilePatientId").value = "PID-3";
-            el("profileOrderId").value = "ORC-2,OBR-18";
-            el("profileSampleId").value = "SPM-2,OBR-3";
-            el("profileTestCode").value = "OBR-4.1";
-            el("profileTestName").value = "OBR-4.2";
-            el("profileResultValue").value = "";
-            el("profileResultUnit").value = "";
-            el("profileResultCode").value = "";
-            el("profileResultDocument").value = "";
-            el("profileResultObxType").value = "NM";
-            canvasSegments = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM"];
-        } else if (type === 'ORU_NUMERIC') {
-            el("profileMessageType").value = "ORU^R01";
-            el("profilePatientId").value = "PID-3";
-            el("profileOrderId").value = "ORC-2,OBR-18";
-            el("profileSampleId").value = "SPM-2,OBR-3";
-            el("profileResultValue").value = "OBX-5";
-            el("profileResultUnit").value = "OBX-6";
-            el("profileResultCode").value = "OBX-3.1";
-            el("profileResultDocument").value = "";
-            el("profileResultObxType").value = "NM";
-            canvasSegments = ["MSH", "PID", "ORC", "OBR", "OBX"];
-        } else if (type === 'ORU_PDF') {
-            el("profileMessageType").value = "ORU^R01";
-            el("profilePatientId").value = "PID-3";
-            el("profileOrderId").value = "ORC-2,OBR-18";
-            el("profileSampleId").value = "SPM-2,OBR-3";
-            el("profileResultValue").value = "";
-            el("profileResultUnit").value = "";
-            el("profileResultCode").value = "";
-            el("profileResultDocument").value = "OBX-5";
-            el("profileResultObxType").value = "ED";
-            canvasSegments = ["MSH", "PID", "ORC", "OBR", "OBX"];
-        }
-        renderCanvas();
-        triggerAutoPreview();
-    }
-
-    function resetCanvas() {
-        resetProtocolProfile();
-    }
-
     function triggerAutoPreview() {
         clearTimeout(previewTimeout);
         previewTimeout = setTimeout(() => {
             if(el("profileAnalyzer").value) {
-               previewProtocolProfile();
+               previewProtocolProfile({automatic:true});
             }
         }, 600);
     }

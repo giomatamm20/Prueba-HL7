@@ -5,19 +5,25 @@ from .hl7_orders import hl7_path_value, parse_order
 
 CANONICAL_TARGETS = {
     "patient.id": "patientId", "patient.name": "patientName",
+    "patient.birthDate": "patientBirthDate", "patient.sex": "patientSex", "patient.address": "patientAddress",
     "order.id": "orderId", "order.fillerId": "fillerOrderId", "order.control": "orderControl",
+    "order.status": "orderStatus",
     "sample.id": "sampleId", "sample.code": "sampleCode", "sample.name": "sampleName",
     "test.code": "procedureCode", "test.name": "procedureName",
     "visit.type": "visitType", "visit.number": "visitNumber",
+    "patient.visitType": "visitType", "patient.visitNumber": "visitNumber",
     "order.priority": "priority", "order.clinicalInfo": "clinicalInfo",
 }
 
 
-def parse_with_profile(raw_message: str, inbound: dict) -> dict:
+def parse_with_profile(raw_message: str, inbound: dict, permissive: bool = False) -> dict:
     """Parses the common model, then overlays explicit profile mappings."""
     from .hl7_contract import canonical_message
     raw_message = canonical_message(raw_message)
     message_type = inbound.get("messageType")
+    if permissive:
+        from .hl7_orders import extract_metadata
+        message_type = extract_metadata(raw_message)["messageType"]
     schema = inbound.get("schema") or {}
     required_order_segments = None
     if int(schema.get("formatVersion") or 1) >= 2:
@@ -26,6 +32,8 @@ def parse_with_profile(raw_message: str, inbound: dict) -> dict:
             for segment in schema.get("segments") or []
             if int(segment.get("min", 0)) > 0 and str(segment.get("name") or "").upper() in {"ORC", "OBR"}
         }
+    if permissive:
+        required_order_segments = set()
     base = parse_order(
         raw_message,
         {message_type} if message_type else None,
@@ -37,7 +45,7 @@ def parse_with_profile(raw_message: str, inbound: dict) -> dict:
         paths = [mapping.get("source", ""), *(mapping.get("alternatives") or [])]
         value = next((value for path in paths if (value := hl7_path_value(raw_message, path))), None)
         if value is None:
-            if mapping.get("required"):
+            if mapping.get("required") and not permissive:
                 raise ValueError(f"Profile requires {target}")
             continue
         canonical = CANONICAL_TARGETS.get(target)
@@ -51,7 +59,7 @@ def parse_with_profile(raw_message: str, inbound: dict) -> dict:
             elif canonical == "procedureName":
                 base["panelName"] = value
         else:
-            custom_fields[target] = value
+            custom_fields[target.removeprefix("customFields.")] = value
     base["customFields"] = custom_fields
     for study in base.get("studies", []):
         rows = [row for row in (study.get("orc"), study.get("obr")) if row]
@@ -68,7 +76,7 @@ def parse_with_profile(raw_message: str, inbound: dict) -> dict:
             paths = [mapping.get("source", ""), *(mapping.get("alternatives") or [])]
             value = next((v for path in paths if (v := hl7_path_value(scoped_message, path))), None)
             if value is None:
-                if mapping.get("required"):
+                if mapping.get("required") and not permissive:
                     raise ValueError(f"Profile requires {target} in {study['key']}")
                 continue
             if target.startswith("test."):

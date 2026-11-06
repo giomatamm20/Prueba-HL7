@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import re
+from .hl7_text import normalize_hl7
 
 
 class HL7OrderError(ValueError):
@@ -7,7 +8,7 @@ class HL7OrderError(ValueError):
 
 
 def segments_from_message(raw_message: str) -> list[list[str]]:
-    normalized = raw_message.replace("\r\n", "\r").replace("\n", "\r")
+    normalized = normalize_hl7(raw_message)
     lines = [line for line in normalized.split("\r") if line]
     separator = lines[0][3] if lines and lines[0].startswith("MSH") and len(lines[0]) > 3 else "|"
     return [line.split(separator) for line in lines]
@@ -37,7 +38,7 @@ def extract_metadata(raw_message: str) -> dict:
                 "messageType": "^".join((field(segment, 8) or "").split((field(segment, 1) or "^")[0])[:2]),
                 "messageControlId": field(segment, 9),
                 "version": field(segment, 11) or "2.5.1",
-                "delimiters": {"field": raw_message[3], "encoding": field(segment, 1)},
+                "delimiters": {"field": normalize_hl7(raw_message)[3], "encoding": field(segment, 1)},
             }
     return {
         "sendingApplication": None,
@@ -295,12 +296,7 @@ def build_ack(
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     control_id = metadata.get("messageControlId") or "UNKNOWN"
     message_type = metadata.get("messageType")
-    if message_type == "OML^O33":
-        trigger = "O33"
-    elif message_type == "OML^O21":
-        trigger = "O21"
-    else:
-        trigger = "O01"
+    trigger = message_type.split("^")[1] if message_type and "^" in message_type else "O01"
     msa = f"MSA|{ack_code}|{control_id}"
     from .hl7_values import escaped, declare_utf8
     if error_message:
@@ -317,14 +313,8 @@ def build_ack(
     ]
     def append_err(details: list[str], severity: str) -> None:
         for detail in details[:10]:
-            escaped = (
-                detail.replace("\\", "\\E\\")
-                .replace("|", "\\F\\")
-                .replace("^", "\\S\\")
-                .replace("~", "\\R\\")
-                .replace("&", "\\T\\")
-            )
-            segments.append(f"ERR|||207^Application internal error^HL70357|{severity}|||{escaped[:240]}")
+            safe_detail = escaped(detail[:160], scalar=True)
+            segments.append(f"ERR|||207^Application internal error^HL70357|{severity}|||{safe_detail}")
 
     if error_message:
         append_err(error_message.removeprefix("Contrato HL7 incumplido: ").split("; "), "E")

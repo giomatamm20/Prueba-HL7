@@ -124,7 +124,7 @@ function applyStudy() {
 function syncDraft() { commitParameter();draft.name=$('catalogName').value.trim();if(currentStudy())applyStudy();renderStudyOptions();return draft; }
 function newStudy() { syncDraft();let i=draft.studies.length+1;while(draft.studies.some(s=>s.code===`NUEVO-${i}`))i++;draft.studies.push({code:`NUEVO-${i}`,name:'Nuevo estudio',parameters:[],groups:[]});selectedStudy=draft.studies.length-1;changed();renderStudies(); }
 async function reloadRevisions(selectId) {
-  revisions=await request('/api/catalogs');$('revision').innerHTML=revisions.map(r=>`<option value="${r.id}">${escapeHTML(r.name)} · v${r.version}</option>`).join('');
+  revisions=(await request('/api/catalogs')).sort((a,b)=>String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || b.version-a.version);$('revision').innerHTML=revisions.map(r=>`<option value="${r.id}">${escapeHTML(r.name)} · v${r.version}</option>`).join('');
   if(selectId)$('revision').value=selectId;
 }
 function loadRevision() {
@@ -141,7 +141,8 @@ async function saveCatalog(copy=false) {
 function renderAssignment() {
   const analyzer=analyzers.find(a=>a.id===$('analyzer').value);
   const revision=revisions.find(r=>r.id===analyzer?.catalogRevisionId);
-  $('assignmentInfo').textContent=analyzer ? `Asignado: ${revision ? revision.name+' v'+revision.version : 'catálogo inicial / modo compatible'}. Política: ${analyzer.unknownStudyPolicy || 'compatible'}.` : 'Cree un equipo HL7 desde Configurar equipo.';
+  $('assignmentInfo').textContent=analyzer ? `Asignado: ${revision ? revision.name+' v'+revision.version : 'catálogo inicial / modo compatible'}. Política: ${analyzer.unknownStudyPolicy || 'compatible'}.${analyzer.profile==='ANAPATH' ? ' AnaPath puede usar un catálogo asignado; el contrato de salida se conserva salvo que elijas aplicar la salida ORU multiestudio.' : ''}` : 'No hay equipos HL7 de laboratorio. Puedes crearlos en Configurar equipo; PACS utiliza su propio flujo de imágenes.';
+  $('saveReception').disabled=!analyzer;$('assignCatalog').disabled=!analyzer;
   $('acceptUnknownTests').checked=Boolean(analyzer?.acceptUnknownTests);
   $('policy').value=analyzer?.unknownStudyPolicy || 'BLOCK';
   if(draft.studies.some(s=>s.code===analyzer?.genericStudyCode))$('template').value=analyzer.genericStudyCode;
@@ -150,7 +151,7 @@ function renderAssignment() {
 }
 async function refreshAnalyzers() {
   const selected=$('analyzer').value;
-  analyzers=(await request('/api/analyzers')).filter(a=>a.protocol==='HL7' && !['PACS','ANAPATH'].includes(a.profile));
+  analyzers=(await request('/api/analyzers')).filter(a=>a.protocol==='HL7' && a.profile!=='PACS');
   $('analyzer').innerHTML=analyzers.map(a=>`<option value="${escapeHTML(a.id)}">${escapeHTML(a.name)}</option>`).join('');
   if(analyzers.some(a=>a.id===selected))$('analyzer').value=selected;
   renderAssignment();

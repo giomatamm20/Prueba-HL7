@@ -88,6 +88,8 @@ def resolve_value(field: dict, context: dict) -> Any:
             value = hl7_path_value(context.get("inbound") or "", source[8:])
         else:
             value = _resolve_path(context, source)
+            if source == "result.name" and not value:
+                value = (context.get("result") or {}).get("code")
             if source == "result.value" and "hl7Value" in context.get("result", {}):
                 value = context["result"]["hl7Value"]
         if value in (None, ""):
@@ -137,8 +139,10 @@ def _base_context(analyzer: dict, order: dict, results: list[dict], now: datetim
             "address": order.get("patientAddress"), "visitType": order.get("visitType"),
             "visitNumber": order.get("visitNumber"),
         },
+        "visit": {"type": order.get("visitType"), "number": order.get("visitNumber")},
         "order": {
             "id": order.get("orderId"), "fillerId": _outbound_filler_id(order), "status": order.get("orderStatus"),
+            "control": order.get("orderControl"), "priority": order.get("priority"), "clinicalInfo": order.get("clinicalInfo"),
             "orc2": order.get("orc2"), "orc3": order.get("orc3"), "orc4": order.get("orc4"),
             "obr2": order.get("obr2"), "obr3": order.get("obr3"),
         },

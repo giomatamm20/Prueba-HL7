@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from .hl7_text import normalize_hl7
 
 
 @dataclass(frozen=True)
@@ -108,7 +109,7 @@ KNOWN_REPEATABLE_SEGMENTS = {"NTE", "OBR", "OBX", "SPM"}
 
 
 def parse_hl7(raw_message: str) -> HL7Message:
-    normalized = raw_message.replace("\r\n", "\r").replace("\n", "\r").strip("\r")
+    normalized = normalize_hl7(raw_message).strip("\r")
     lines = [line for line in normalized.split("\r") if line]
     if not lines or not lines[0].startswith("MSH") or len(lines[0]) < 4:
         raise ValueError("El mensaje debe iniciar con un segmento MSH válido")
@@ -163,6 +164,7 @@ def message_type(message: HL7Message) -> str:
 
 def canonical_message(raw_message: str) -> str:
     """Convert negotiated separators to the canonical internal HL7 separators."""
+    raw_message = normalize_hl7(raw_message)
     message = parse_hl7(raw_message)
     if message.delimiters == HL7Delimiters():
         return raw_message

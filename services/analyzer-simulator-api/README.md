@@ -1,7 +1,9 @@
 # Analyzer Simulation Lab
 
 Flujo actual: [puerto + contrato de entrada/salida + envío manual](../../docs/CONFIGURACION_EQUIPOS_HL7.md).
-Sin contrato completo, el equipo HL7 queda en STANDBY. Los cambios posteriores
+Sin perfil activo, el equipo HL7 queda en STANDBY. Un perfil por contrato exige
+entrada y salida completas; los modos permisivo y aprendizaje habilitan la recepción
+sin ese requisito. Los cambios posteriores
 del contrato se aplican al siguiente envío/reenvío manual, conservando revisiones.
 
 El pool **5100–5119/TCP** ya está publicado por defecto. El
@@ -152,6 +154,12 @@ formulario se incluyen al avanzar o guardar, sin tener que pulsar antes
 «Agregar / actualizar valor». También se puede guardar una revisión sin asignarla.
 Los grupos, escenarios y herramientas de importación quedan como opciones avanzadas.
 
+El selector incluye equipos HL7 de laboratorio, también AnaPath. AnaPath conserva
+su flujo de informes mientras no se le asigne un catálogo explícitamente. La
+asignación conserva el contrato del diseñador; solo cambia la salida cuando se
+elige **Aplicar salida ORU multiestudio**. PACS mantiene su flujo de imágenes y
+no aparece como destino de un catálogo de laboratorio.
+
 Para probar solo la recepción HL7, activa **Recibir exámenes aunque no estén en
 el catálogo (solo recepción)** en el paso 1 y pulsa **Guardar opción de recepción**.
 La misma opción está en **Configurar equipo**. No requiere crear un catálogo.
@@ -280,6 +288,27 @@ del laboratorio, muestra y examen se configuran por separado:
   entrada. Vacío omite ese dato en la salida. También se pueden cambiar los
   destinos del código, valor y unidad del resultado.
 
+La tabla carga los mapeos del perfil y propone rutas desde la semántica del
+contrato para datos que todavía no tienen mapeo. No sustituye rutas personalizadas
+por las de otro equipo. Las referencias habituales de HL7 solo se usan como
+punto de partida al crear un perfil nuevo.
+
+**Añadir otro dato del equipo** permite configurar fecha de nacimiento, sexo,
+dirección, visita, tipo de muestra, prioridad o un dato propio con clave y nombre.
+Los datos propios se leen de la ruta configurada y se guardan como `customFields`;
+sus nombres y rutas se recuperan al abrir el perfil.
+
+**Mensaje de salida que estás configurando** selecciona el evento del perfil.
+Se conservan los demás eventos, sus grupos, segmentos privados, reglas y
+transformaciones. No se reemplazan automáticamente por una plantilla ORU.
+Las transformaciones de apellido y nombre se conservan al editar destinos.
+Los identificadores repetidos del paciente se pueden copiar por separado.
+
+En una salida inferida, solo una regla `const` fija un valor. Los campos sin
+semántica conocida se copian desde el mensaje real (`inbound.SEG-campo`) en vez
+de fijar los valores del ejemplo. Si el mensaje no contiene el dato exigido por
+el contrato de salida, es necesario ajustar el mapeo antes de enviarlo.
+
 Por ejemplo, `ORC-4.1` puede mapearse como `order.id` para una integración
 que identifica sus órdenes en ese campo, y devolverlo en `ORC-4.1, OBR-2`.
 `OBR-4.1` sigue siendo un campo distinto para el código del examen.
@@ -293,6 +322,19 @@ recuperan al abrir la revisión. Los cambios de destino actualizan también
 el contrato de salida generado; los grupos de estudios y parámetros se
 conservan. La pantalla detecta ubicaciones inválidas y destinos compartidos
 por datos diferentes antes de guardar.
+
+Al cargar la aplicación o elegir un equipo, el diseñador recupera automáticamente
+su perfil activo. Si no tiene perfil activo, recupera el borrador más reciente.
+La actualización periódica del panel no reemplaza los cambios del editor. La
+vista previa informa su resultado por separado del estado de guardado.
+
+La configuración usa el generador semántico y la tabla de campos básicos;
+la antigua cuadrícula de segmentos ya no forma parte del diseñador.
+El nombre escrito en **Nombre del perfil** se guarda en cada revisión y no
+se reemplaza si termina una carga pendiente mientras se edita el formulario.
+Las versiones eliminadas dejan de aparecer y no pueden reactivarse ni editarse.
+Se conserva su registro interno para las órdenes que ya las referencian.
+Eliminar la versión activa deja el equipo en STANDBY hasta activar otro perfil.
 
 El Diseñador HL7 permite seleccionar un analizador y pegar un mensaje OML u
 ORU como muestra. El backend infiere y guarda un contrato versionado asociado
@@ -312,7 +354,32 @@ Las rutas de mapeo pueden seleccionar repeticiones, por ejemplo
 rechazan la orden con `MSA|AE`; en modo de advertencias pueden aceptarse con
 `MSA|AA` y segmentos `ERR` de severidad `W`. Los errores técnicos que impiden
 construir una orden siguen respondiendo `MSA|AE`. El contrato debe definir
-entrada y salida antes de activar el equipo.
+entrada y salida antes de activar el equipo en modo **Por contrato**.
+
+### Recepción permisiva y aprendizaje desde el equipo
+
+En el diseñador, **Modo de recepción** permite elegir:
+
+- **Por contrato**: conserva las reglas estrictas o de advertencia del perfil.
+- **Permisivo**: permite activar el listener sin contrato de entrada ni salida.
+  Recibe HL7 válido con MSH-9 y MSH-10; registra mensajes que no son órdenes
+  en Mensajes, sin crear órdenes ni resultados ficticios. Las órdenes admiten
+  códigos desconocidos, que quedan pendientes de catálogo antes de procesarlos.
+- **Aprender del primer mensaje externo**: al guardar y activar, espera un HL7
+  por el puerto del equipo. El primer mensaje válido genera una revisión nueva
+  con el contrato semántico y el mensaje base. Conserva los mapeos básicos,
+  el nombre y la salida; continúa en modo permisivo para poder revisar y ajustar
+  lo aprendido. Para repetir el aprendizaje, guarda otra revisión en ese modo.
+
+Desmarcar la validación estricta sin tener contrato de entrada habilita la
+recepción permisiva. El diseñador carga la revisión aprendida automáticamente
+si no hay cambios pendientes en el formulario. Enviar resultados siempre
+requiere una definición de salida y resolver los estudios pendientes.
+
+La recepción y la inferencia aceptan segmentos separados por CR, LF, CRLF,
+o por textos pegados como `\r`, `\n`, `\r\n` y `/r`. La conversión de textos
+se limita a los límites de segmentos para conservar escapes HL7 y URLs.
+Los reintentos con distintos saltos de línea conservan la misma identidad.
 
 ## Endpoints
 

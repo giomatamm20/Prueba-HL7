@@ -16,7 +16,8 @@ from .astm import ASTMOrderError, build_astm_result, parse_astm_order, send_astm
 from .behavior import normalize_behavior, validate_hl7_behavior
 from .study_catalog import bind_studies, dynamic_outbound, generate_results, seed_catalog, validate_catalog
 from .hl7_orders import HL7OrderError, build_ack, extract_metadata, parse_order, validate_anapath_order
-from .hl7_contract import hl7_contract_issues, infer_hl7_contract
+from .hl7_contract import hl7_contract_issues, infer_hl7_contract, parse_hl7
+from .hl7_text import normalize_hl7
 from .protocols import build_anapath_event, build_hl7_oru, send_mllp
 from .profile_builder import build_profile_message
 from .profile_parser import parse_with_profile
@@ -28,7 +29,7 @@ from .pacs import (
 )
 from .store import SimulatorStore
 from .configuration import validate_ports
-from .profile_validation import validate_profile, validate_outbound, valid_path, profile_ready
+from .profile_validation import validate_profile, validate_outbound, valid_path, profile_ready, reception_mode, outbound_ready
 from .hl7_values import declare_utf8
 
 LOGGER = logging.getLogger("analyzer-simulator.engine")
@@ -140,7 +141,7 @@ class SimulationEngine:
 
     def _require_contract(self, analyzer_id):
         if not self.communication_ready(analyzer_id):
-            raise ValueError("Equipo en STANDBY: complete y active el contrato HL7 de entrada y salida en el editor")
+            raise ValueError("Equipo en STANDBY: active un perfil por contrato, permisivo o de aprendizaje en el Diseñador HL7")
 
     @contextmanager
     def _atomic(self):
@@ -174,7 +175,14 @@ class SimulationEngine:
 
     def list_analyzers(self) -> list[dict]:
         with self.lock:
-            return [{**item, "contractReady": self.communication_ready(item)} for item in self.analyzers.values()]
+            result = []
+            for item in self.analyzers.values():
+                profile = self.store.get_active_protocol_profile(item["id"])
+                mode = reception_mode((profile or {}).get("inbound") or {})
+                result.append({**item, "contractReady": self.communication_ready(item), "outboundReady": outbound_ready(profile),
+                               "receptionMode": mode, "activeProtocolProfileId": (profile or {}).get("id"),
+                               "learningPending": bool(profile and mode == "LEARN")})
+            return result
 
     def catalog_revision(self, revision_id):
         revision = next((r for r in self.store.list_catalogs() if r["id"] == revision_id), None)
@@ -196,7 +204,7 @@ class SimulationEngine:
     def assign_catalog(self, analyzer_id, revision_id, policy="BLOCK", template=None, configure_outbound=False):
         with self._atomic():
             analyzer = self.analyzers.get(analyzer_id)
-            if not analyzer or analyzer.get("profile") in {"PACS", "ANAPATH"} or analyzer["protocol"] != "HL7":
+            if not analyzer or analyzer.get("profile") == "PACS" or analyzer["protocol"] != "HL7":
                 raise ValueError("Seleccione un analizador HL7 de laboratorio")
             revision = self.catalog_revision(revision_id)
             bind_studies(revision, [], policy, template)
@@ -213,7 +221,10 @@ class SimulationEngine:
             return dict(analyzer)
 
     def _bind_order_catalog(self, order, analyzer, receiving=False):
-        if analyzer.get("profile") in {"PACS", "ANAPATH"} or analyzer.get("protocol") != "HL7":
+        if analyzer.get("profile") == "PACS" or analyzer.get("protocol") != "HL7":
+            return
+        # AnaPath keeps its report workflow until a catalog is explicitly assigned.
+        if analyzer.get("profile") == "ANAPATH" and not analyzer.get("catalogRevisionId"):
             return
         revision = self.catalog_revision(analyzer.get("catalogRevisionId") or "builtin-v1")
         groups = order.get("studies") or [
@@ -305,7 +316,7 @@ class SimulationEngine:
     def list_protocol_profiles(self, analyzer_id: str) -> list[dict]:
         if analyzer_id not in self.analyzers:
             raise ValueError("Unknown analyzer")
-        return self.store.list_protocol_profiles(analyzer_id)
+        return [profile for profile in self.store.list_protocol_profiles(analyzer_id) if profile["status"] != "RETIRED"]
 
     def save_protocol_profile(self, analyzer_id: str, payload: dict) -> dict:
         with self._atomic():
@@ -330,7 +341,9 @@ class SimulationEngine:
             payload["inbound"] = inbound
         now = self._now()
         existing = self.store.list_protocol_profiles(analyzer_id)
-        name = payload.get("name") or "Perfil sin nombre"
+        name = (payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("Escribe el nombre del perfil antes de guardar")
         version = max((item["version"] for item in existing), default=0) + 1
         profile = {
             **payload,
@@ -359,7 +372,7 @@ class SimulationEngine:
             (item for item in self.store.list_protocol_profiles(analyzer_id) if item.get("id") == profile_id),
             None,
         )
-        if existing is None:
+        if existing is None or existing["status"] == "RETIRED":
             raise ValueError("Protocol profile not found")
         # Revisions are immutable. The old contract remains available for orders
         # and pending transmissions which already reference its ID.
@@ -387,11 +400,11 @@ class SimulationEngine:
             (item for item in self.store.list_protocol_profiles(analyzer_id) if item.get("id") == profile_id),
             None,
         )
-        if profile is None:
+        if profile is None or profile["status"] == "RETIRED":
             raise ValueError("Protocol profile not found")
         validate_profile(profile)
         if not profile_ready(profile):
-            raise ValueError("Complete both inbound and outbound contracts before activation")
+            raise ValueError("Complete entrada y salida para el modo por contrato, o seleccione recepción permisiva / aprendizaje")
         with self._atomic():
             profile["status"] = "ACTIVE"
             profile["updatedAt"] = self._now()
@@ -426,11 +439,13 @@ class SimulationEngine:
     def infer_protocol_contract(self, analyzer_id: str, raw_message: str) -> dict:
         if analyzer_id not in self.analyzers:
             raise ValueError("Unknown analyzer")
+        raw_message = normalize_hl7(raw_message)
         contract = infer_hl7_contract(raw_message)
         return {
             "analyzerId": analyzer_id,
             "messageType": contract.get("messageType"),
             "schema": contract,
+            "rawMessage": raw_message,
             "preview": contract.get("preview"),
         }
 
@@ -494,9 +509,10 @@ class SimulationEngine:
         return order
 
     def receive_hl7_order(self, raw_message: str, analyzer_id: str, source_ip: str) -> str:
+        raw_message = normalize_hl7(raw_message)
         metadata = extract_metadata(raw_message)
         identity = json.dumps([metadata.get(key) for key in ("sendingApplication", "sendingFacility", "messageControlId")])
-        normalized = raw_message.replace("\r\n", "\r").replace("\n", "\r").strip("\r")
+        normalized = raw_message.strip("\r")
         digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
         try:
             with self._atomic():
@@ -538,10 +554,33 @@ class SimulationEngine:
             accepted_types = set(behavior.get("acceptedMessageTypes") or [])
             active_profile = self.store.get_active_protocol_profile(analyzer_id)
             profile_inbound = (active_profile or {}).get("inbound") or {}
+            permissive = reception_mode(profile_inbound) in {"PERMISSIVE", "LEARN"}
             contract_warnings: list[str] = []
+
+            if permissive:
+                parsed = parse_hl7(raw_message)
+                if not metadata.get("messageControlId") or not metadata.get("messageType") or "^" not in metadata["messageType"]:
+                    raise HL7OrderError("Se requieren MSH-9 (tipo de mensaje) y MSH-10 (identificador) para recibir HL7")
+                if reception_mode(profile_inbound) == "LEARN":
+                    learned = {**profile_inbound, "schema": infer_hl7_contract(raw_message), "rawHL7": raw_message,
+                               "messageType": metadata["messageType"], "receptionMode": "PERMISSIVE",
+                               "validationMode": "WARN", "strictValidation": False,
+                               "learnedAt": self._now(), "learnedFromMessageId": metadata["messageControlId"]}
+                    active_profile = self._save_protocol_profile(analyzer_id, {
+                        "name": active_profile["name"], "inbound": learned, "outbound": active_profile.get("outbound") or {},
+                        "activate": True, "revisionOf": active_profile["id"]})
+                    profile_inbound = active_profile["inbound"]
+                # Non-order messages are received, acknowledged and traced. They
+                # must not fabricate worklist orders or synthetic test results.
+                if metadata["messageType"].split("^")[0] not in {"ORM", "OML"} or not any(s.name == "OBR" for s in parsed.segments):
+                    ack_code = behavior.get("ackSuccessCode") or "AA"
+                    ack = build_ack(metadata, ack_code)
+                    self._log_inbound_hl7(analyzer_id, None, source_ip, raw_message, ack_code, ack, None,
+                                         metadata["messageControlId"], metadata["messageType"])
+                    return ack
             
             strict_profile = profile_inbound.get("validationMode", "STRICT" if profile_inbound.get("strictValidation") else "WARN") == "STRICT"
-            if profile_inbound.get("schema"):
+            if profile_inbound.get("schema") and not permissive:
                 schema = profile_inbound["schema"]
                 if int(schema.get("formatVersion") or 1) >= 2:
                     contract_warnings = hl7_contract_issues(raw_message, schema)
@@ -555,20 +594,20 @@ class SimulationEngine:
                     raise HL7OrderError("Contrato HL7 incumplido: " + "; ".join(contract_warnings))
             
             order_payload = (
-                parse_with_profile(raw_message, profile_inbound)
-                if profile_inbound.get("mappings") or profile_inbound.get("messageType")
+                parse_with_profile(raw_message, profile_inbound, permissive=permissive)
+                if permissive or profile_inbound.get("mappings") or profile_inbound.get("messageType")
                 else parse_order(raw_message, accepted_types or None, behavior.get("inboundMappings"))
             )
             # Generic devices defined by the editor use that contract as their
             # message definition. Explicit device behavior still adds its rules.
-            if not profile_inbound.get("schema") or analyzer.get("behaviorConfigured"):
+            if not permissive and (not profile_inbound.get("schema") or analyzer.get("behaviorConfigured")):
                 validate_hl7_behavior(raw_message, order_payload, behavior)
-            if order_payload["orderControl"] not in set(behavior.get("allowedOrderControls") or ["NW", "CA"]):
+            if not permissive and order_payload["orderControl"] not in set(behavior.get("allowedOrderControls") or ["NW", "CA"]):
                 raise HL7OrderError(f"Unsupported ORC-1 order control: {order_payload['orderControl']}")
 
-            if analyzer.get("profile") == "ANAPATH":
+            if not permissive and analyzer.get("profile") == "ANAPATH":
                 validate_anapath_order(order_payload)
-            elif analyzer.get("profile") != "PACS" and not analyzer.get("catalogRevisionId") and not analyzer.get("acceptUnknownTests"):
+            elif not permissive and analyzer.get("profile") != "PACS" and not analyzer.get("catalogRevisionId") and not analyzer.get("acceptUnknownTests"):
                 unsupported = [
                     test
                     for test in order_payload["requestedTests"]
@@ -591,7 +630,7 @@ class SimulationEngine:
                 if existing["barcode"] != order_payload["barcode"] or existing["patientId"] != order_payload["patientId"]:
                     raise HL7OrderError("Order update cannot change sample or patient identity")
                 replacement = self._order_from_payload(order_payload, analyzer_id, "BIDIRECTIONAL")
-                self._bind_order_catalog(replacement, analyzer, receiving=True)
+                self._bind_order_catalog(replacement, {**analyzer, "acceptUnknownTests": True} if permissive else analyzer, receiving=True)
                 replacement["sourceRawMessage"] = raw_message
                 replacement.update({key: existing[key] for key in ("id", "status", "createdAt", "rackPosition")})
                 if active_profile:
@@ -615,7 +654,7 @@ class SimulationEngine:
                 raise HL7OrderError("muestra duplicada")
 
             order = self._order_from_payload(order_payload, analyzer_id, "BIDIRECTIONAL")
-            self._bind_order_catalog(order, analyzer, receiving=True)
+            self._bind_order_catalog(order, {**analyzer, "acceptUnknownTests": True} if permissive else analyzer, receiving=True)
             order["sourceRawMessage"] = raw_message
             if active_profile:
                 order["inboundProfileId"] = active_profile["id"]
@@ -1012,6 +1051,8 @@ class SimulationEngine:
             port = int(analyzer["resultDestinationPort"])
             pending = study.get("pendingNotification")
             active_profile = self.store.get_active_protocol_profile(analyzer["id"])
+            if analyzer["protocol"] == "HL7" and not outbound_ready(active_profile):
+                raise ValueError("Configure el contrato de salida antes de enviar resultados; la recepción permisiva o de aprendizaje solo habilita la entrada")
             if pending and pending.get("profileId") == (active_profile or {}).get("id"):
                 message, control_id = pending["message"], pending["controlId"]
                 profile_id, profile_version = pending.get("profileId"), pending.get("profileVersion")
@@ -1142,6 +1183,8 @@ class SimulationEngine:
             port = destination_port or analyzer["resultDestinationPort"]
             pending = order.get("pendingOutbound")
             active_profile = self.store.get_active_protocol_profile(analyzer["id"])
+            if analyzer["protocol"] == "HL7" and not outbound_ready(active_profile):
+                raise ValueError("Configure el contrato de salida antes de enviar resultados; la recepción permisiva o de aprendizaje solo habilita la entrada")
             if pending and pending.get("inFlight"):
                 raise ValueError("An outbound operation is already in progress for this order")
             if pending and pending["event"] == event_type and pending["destination"] == f"{host}:{port}" and pending.get("profileId") == (active_profile or {}).get("id"):

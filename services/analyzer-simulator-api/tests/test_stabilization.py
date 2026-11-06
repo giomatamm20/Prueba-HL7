@@ -117,7 +117,8 @@ class StabilizationTests(EngineCase):
         self.engine.delete_protocol_profile("test-analyzer", revised["id"])
         self.assertFalse(self.engine.communication_ready("test-analyzer"))
         self.engine.delete_protocol_profile("test-analyzer", original["id"])
-        self.assertIn(original["id"], [p["id"] for p in self.engine.list_protocol_profiles("test-analyzer")])
+        self.assertNotIn(original["id"], [p["id"] for p in self.engine.list_protocol_profiles("test-analyzer")])
+        self.assertIn(original["id"], [p["id"] for p in self.engine.store.list_protocol_profiles("test-analyzer")])
 
     def test_invalid_profile_definitions_leave_active_revision_unchanged(self):
         self.add()

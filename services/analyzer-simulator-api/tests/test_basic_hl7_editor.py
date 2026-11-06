@@ -23,10 +23,10 @@ ORU = (
 
 @unittest.skipUnless(shutil.which("node"), "Node is required for editor tests")
 class BasicHL7EditorTests(unittest.TestCase):
-    def run_editor(self, values=None, edited=(), mode="apply"):
+    def run_editor(self, values=None, edited=(), mode="apply", raw=ORM):
         static = Path(__file__).resolve().parents[1] / "app/static"
         html = (static / "index.html").read_text(encoding="utf-8")
-        conversion = html[html.index("    function structuredSchemaToOutboundSegments("):html.index("    function applyCanvasPopup(")]
+        conversion = html[html.index("    function structuredSchemaToOutboundSegments("):html.index("    function triggerAutoPreview(")]
         script = "const fs=require('fs');const input=JSON.parse(fs.readFileSync(0,'utf8'));global.window={};global.document={getElementById:()=>null};\n"
         script += (static / "basic-hl7.js").read_text(encoding="utf-8") + "\n" + conversion
         script += """
@@ -42,7 +42,7 @@ try {
         values = {"patient.id": {"from": "PID-3.1", "to": "PID-3"},
                   "order.id": {"from": "ORC-2.1", "to": "ORC-2, OBR-2"}, **(values or {})}
         data = {"profile": profile, "values": values, "edited": edited, "mode": mode,
-                "raw": ORM, "locations": "ORC-3.1, ORC-4.1"}
+                "raw": raw, "locations": "ORC-3.1, ORC-4.1"}
         result = subprocess.run([shutil.which("node"), "-e", script], input=json.dumps(data),
                                 capture_output=True, text=True, encoding="utf-8", timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -55,7 +55,7 @@ try {
         }, ["order.id", "order.fillerId"])
         self.assertNotIn("error", profile, profile)
         profile = validate_profile(profile)
-        order = {**parse_with_profile(ORM, profile["inbound"]), "id": "persisted-order"}
+        order = {**parse_with_profile(ORM, profile["inbound"]), "id": "persisted-order", "sourceRawMessage": ORM}
         self.assertEqual(order["orderId"], "TEST-2611050002")
         message, _ = build_profile_message(profile, {"id": "sim"}, order,
             [{"code": "PH", "value": 6}], "RESULT_FINAL", 1)
@@ -70,7 +70,7 @@ try {
         profile = self.run_editor({"order.fillerId": {"from": "", "to": ""}}, ["order.fillerId"])
         self.assertNotIn("error", profile, profile)
         parsed = parse_with_profile(ORM, profile["inbound"])
-        message, _ = build_profile_message(profile, {"id": "sim"}, {**parsed, "id": "stored"},
+        message, _ = build_profile_message(profile, {"id": "sim"}, {**parsed, "id": "stored", "sourceRawMessage": ORM},
             [{"code": "PH", "value": 6}], "RESULT_FINAL", 1)
         self.assertFalse(hl7_path_value(message, "ORC-3"))
         self.assertFalse(hl7_path_value(message, "OBR-3"))
@@ -87,3 +87,8 @@ try {
 
     def test_sample_value_uses_alternatives_and_component_not_the_exam_code(self):
         self.assertEqual(self.run_editor(mode="read"), "TEST-2611050002")
+
+    def test_sample_values_accept_pasted_literal_segment_endings(self):
+        for ending in ['\r', '\n', '\r\n', r'\r', r'\n', r'\r\n', '/r', '/r/n']:
+            with self.subTest(ending=repr(ending)):
+                self.assertEqual(self.run_editor(mode="read", raw=ORM.replace('\r', ending)), "TEST-2611050002")

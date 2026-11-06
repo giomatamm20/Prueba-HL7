@@ -7,15 +7,25 @@ from .hl7_orders import extract_metadata
 from .profile_parser import validate_strict_profile
 
 PATH = re.compile(r"([A-Z0-9]{3})-([1-9]\d*)(?:\[([1-9]\d*)\])?(?:\.([1-9]\d*))?(?:\.([1-9]\d*))?")
-SOURCES = {"analyzer", "patient", "order", "sample", "test", "study", "resultDocument", "system", "result", "counter", "customFields", "inbound"}
+SOURCES = {"analyzer", "patient", "order", "sample", "test", "study", "resultDocument", "system", "result", "counter", "customFields", "inbound", "visit"}
+
+
+def reception_mode(inbound: dict) -> str:
+    return inbound.get("receptionMode") or ("PERMISSIVE" if not inbound.get("schema") and
+        inbound.get("validationMode", "STRICT" if inbound.get("strictValidation", True) else "WARN") == "WARN" else "CONTRACT")
+
+
+def outbound_ready(profile: dict | None) -> bool:
+    outbound = (profile or {}).get("outbound") or {}
+    return bool(outbound.get("schema") or (outbound.get("events") or {}).get("RESULT_FINAL") or
+                (outbound.get("events") or {}).get("IMAGE_READY"))
 
 
 def profile_ready(profile: dict | None) -> bool:
     if not profile:
         return False
-    inbound, outbound = profile.get("inbound") or {}, profile.get("outbound") or {}
-    events = outbound.get("events") or {}
-    return bool(inbound.get("schema") and (outbound.get("schema") or events.get("RESULT_FINAL") or events.get("IMAGE_READY")))
+    inbound = profile.get("inbound") or {}
+    return reception_mode(inbound) in {"PERMISSIVE", "LEARN"} or bool(inbound.get("schema") and outbound_ready(profile))
 
 
 def valid_path(path: str) -> bool:
@@ -103,6 +113,13 @@ def _validate_profile(payload: dict) -> dict:
         raise ValueError("validationMode must be STRICT or WARN")
     inbound["validationMode"] = mode
     inbound["strictValidation"] = mode == "STRICT"
+    receive_mode = reception_mode(inbound)
+    if receive_mode not in {"CONTRACT", "PERMISSIVE", "LEARN"}:
+        raise ValueError("receptionMode must be CONTRACT, PERMISSIVE or LEARN")
+    inbound["receptionMode"] = receive_mode
+    if receive_mode != "CONTRACT":
+        inbound["validationMode"] = "WARN"
+        inbound["strictValidation"] = False
     mappings = inbound.get("mappings") or []
     if not isinstance(mappings, list):
         raise ValueError("Inbound mappings must be a list")
