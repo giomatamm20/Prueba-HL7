@@ -155,8 +155,8 @@ def parse_order(
             current_study = {"key": f"study-{len(studies) + 1}",
                              "code": group_value("procedureCode", component(field(segment, 4), 0) or "UNKNOWN"),
                              "name": group_value("procedureName", component(field(segment, 4), 1) or ""),
-                             "orderId": field(current_orc, 2) or field(segment, 2) or order_id,
-                             "fillerOrderId": field(current_orc, 3) or field(segment, 3),
+                             "orderId": group_value("orderId", field(current_orc, 2) or field(segment, 2) or order_id),
+                             "fillerOrderId": group_value("fillerOrderId", field(current_orc, 3) or field(segment, 3)),
                              "sampleId": specimen_id, "sample": {"id": specimen_id,
                                "code": component(field(scoped_spm, 4), 0), "name": component(field(scoped_spm, 4), 1), "raw": scoped_spm},
                              "orc": current_orc, "obr": segment, "notes": []}

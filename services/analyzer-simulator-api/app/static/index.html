@@ -208,6 +208,8 @@
           </div>
           <label>Pruebas admitidas <small>(códigos separados por coma; vacío = sin restricción)</small></label>
           <input id="cfgTests" value="">
+          <label><input id="cfgAcceptUnknownTests" type="checkbox" style="width:auto"> Recibir exámenes aunque no estén en el catálogo (solo HL7)</label>
+          <p class="hint">Devuelve el ACK y guarda la orden. Los exámenes desconocidos requieren configuración antes de generar o enviar resultados. También puedes ajustar esta opción en Catálogo de estudios, paso 1.</p>
 
           <div class="row" style="margin-top:12px">
             <button onclick="createAnalyzerConfig()">Guardar</button>
@@ -230,25 +232,26 @@
           .canvas-toolbar { display:flex; gap:10px; margin-bottom:10px; align-items:center; }
           .canvas-toolbar button { padding: 4px 10px; font-size:13px; }
           .legacy-mapping { display:none; }
+          .basic-hl7{background:#f4f9fa;border:1px solid #dbe5e8;border-radius:10px;padding:16px;margin:16px 0}
+          .basic-hl7 h3{margin:0 0 8px}.basic-mapping-table{width:100%;min-width:660px;border-collapse:collapse}.basic-mapping-table td,.basic-mapping-table th{padding:10px;border-bottom:1px solid #dbe5e8;text-align:left;vertical-align:top}.basic-mapping-table th{width:25%;font-size:13px}.basic-mapping-table input{width:100%}.basic-mapping-table small{display:block;overflow-wrap:anywhere}.basic-required{font-size:11px!important;font-weight:normal!important;display:flex!important;align-items:center;gap:5px}.basic-required input{width:auto!important}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
         </style>
         <article class="panel protocol">
           <p class="section-label">Diseñador de protocolo</p><h2>Lienzo HL7 Interactivo</h2>
           <p class="hint">Haz clic en los espacios del esqueleto HL7 para mapearlos. La vista previa se actualizará al instante.</p>
           <div class="cols-2"><div><label>Analizador</label><select id="profileAnalyzer" onchange="onProtocolAnalyzerChanged()"></select></div><div><label>Nombre del perfil</label><input id="profileName" value="Perfil ORU estándar"></div></div>
           
+          <section class="basic-hl7" aria-labelledby="basicHL7Title">
+            <h3 id="basicHL7Title">Campos básicos del equipo</h3>
+            <p class="hint">Después de generar la base desde un mensaje, revisa de dónde se lee cada dato y dónde se devuelve. Los campos de entrada y salida se configuran por separado.</p>
+            <p class="hint">Ejemplo: <strong>ORC-4.1</strong> lee el primer componente del campo 4 de ORC. En tu integración puede ser el identificador de la orden; <strong>OBR-4.1</strong> es otro campo. En entrada, separa alternativas por coma; en salida, indica los campos donde copiar el dato. Deja la salida vacía para no copiarlo.</p>
+            <div style="overflow-x:auto"><table class="basic-mapping-table"><thead><tr><th>Dato</th><th>Leer del mensaje recibido</th><th>Devolver en el resultado</th></tr></thead><tbody id="basicHL7Rows"></tbody></table></div>
+            <p class="hint">Guarda el perfil para aplicar estos cambios al equipo. Los valores leídos del ejemplo se muestran como ayuda; la respuesta conserva los datos de cada orden real.</p>
+          </section>
+
           <div class="legacy-mapping" id="legacyMapping">
              <input id="profileMessageType" value="ORU^R01">
              <input id="profileVersion" value="2.5.1">
              <input id="profileInboundType" value="OML^O21">
-             <input id="profilePatientId" value="PID-3">
-             <input id="profilePatientName" value="PID-5">
-             <input id="profileOrderId" value="ORC-2,OBR-18">
-             <input id="profileSampleId" value="SPM-2,OBR-3">
-             <input id="profileTestCode" value="OBR-4.1">
-             <input id="profileTestName" value="OBR-4.2">
-             <input id="profileResultValue" value="OBX-5">
-             <input id="profileResultUnit" value="OBX-6">
-             <input id="profileResultCode" value="OBX-3.1">
              <input id="profileResultDocument" value="">
              <input id="profileResultObxType" value="NM">
              <input id="profileZSegment" value="">
@@ -284,6 +287,7 @@
                       <option value="profilePatientId">ID Paciente</option>
                       <option value="profilePatientName">Nombre Paciente</option>
                       <option value="profileOrderId">ID de Orden</option>
+                      <option value="profileFillerId">ID del laboratorio (filler)</option>
                       <option value="profileSampleId">Código de Muestra</option>
                       <option value="profileTestCode">Código de Examen</option>
                       <option value="profileTestName">Nombre de Examen</option>
@@ -413,6 +417,7 @@
     <div class="row"><label>Escenario <select id="resultsScenario"></select></label><button class="warn" onclick="regenerateOrderResults()">Regenerar valores explícitamente</button></div>
     <p class="hint">Reenviar conserva los valores. Regenerar crea una nueva generación y conserva la anterior en el historial de la orden.</p>
   </dialog>
+  <script src="/static/basic-hl7.js"></script>
   <script>
     const el = id => document.getElementById(id);
     const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -466,15 +471,8 @@
           return paths.map(p => ({target: p, source}));
       };
       
-      let allOutboundFields = [
-          ...outboundMapping("patient.id", "profilePatientId"),
-          ...outboundMapping("patient.name", "profilePatientName"),
-          ...outboundMapping("order.id", "profileOrderId"),
-          ...outboundMapping("sample.id", "profileSampleId"),
-          ...outboundMapping("test.code", "profileTestCode"),
-          ...outboundMapping("test.name", "profileTestName"),
-      ];
-      
+      const allOutboundFields = window.basicHL7.outboundFields();
+
       let segments = [
         { name:"MSH", fields:[{target:"MSH-3",source:"analyzer.id"},{target:"MSH-7",source:"system.timestamp"},{target:"MSH-9.1",sourceType:"fixed",value:type[0] || "ORU"},{target:"MSH-9.2",sourceType:"fixed",value:type[1] || "R01"},{target:"MSH-10",source:"system.messageId"},{target:"MSH-12",sourceType:"fixed",value:el("profileVersion").value}]},
         { name:"ORC", fields:[{target:"ORC-1",sourceType:"fixed",value:"RE"}]},
@@ -522,6 +520,7 @@
                   inboundMapping("patient.id","profilePatientId"),
                   inboundMapping("patient.name","profilePatientName"),
                   inboundMapping("order.id","profileOrderId"),
+                  inboundMapping("order.fillerId","profileFillerId"),
                   inboundMapping("sample.id","profileSampleId"),
                   inboundMapping("test.code","profileTestCode"),
                   inboundMapping("test.name","profileTestName")
@@ -542,7 +541,7 @@
       if (el('useAdvancedOutbound').checked) {
         definition.outbound = JSON.parse(el('advancedOutbound').value);
       }
-      return definition;
+      return window.basicHL7.apply(definition);
     }
     
     async function saveProtocolProfile() {
@@ -645,6 +644,7 @@
           const seg = z.split("-")[0];
           if (!canvasSegments.includes(seg)) canvasSegments.push(seg);
       }
+      window.basicHL7.load(profile);
       renderCanvas();
       triggerAutoPreview();
       updateSemanticBadges();
@@ -663,6 +663,7 @@
       el("profileName").value="Perfil ORU estándar"; el("profileInboundType").value="OML^O21"; el("profileMessageType").value="ORU^R01"; el("profileVersion").value="2.5.1";
       el("profilePatientId").value="PID-3"; el("profileOrderId").value="ORC-2, OBR-2, OBR-3"; el("profileSampleId").value="SPM-2, OBR-3, ORC-3"; el("profileTestCode").value="OBR-4.1"; el("profileTestName").value="OBR-4.2";
       el("profileResultValue").value="OBX-5"; el("profileResultUnit").value="OBX-6"; el("profileResultCode").value="OBX-3.1"; el("profileZSegment").value="";
+      window.basicHL7.reset();
       canvasSegments = ["MSH", "PID", "PV1", "ORC", "OBR", "SPM", "OBX"];
       renderCanvas();
       triggerAutoPreview();
@@ -796,6 +797,7 @@
         resultDestinationHost: el("cfgDestinationHost").value,
         resultDestinationPort: Number(el("cfgDestinationPort").value || 0),
         supportedTests: el("cfgTests").value ? el("cfgTests").value.split(",").map(x => x.trim()).filter(Boolean) : [],
+        acceptUnknownTests: el("cfgAcceptUnknownTests").checked,
         mode: el("cfgMode").value
       };
     }
@@ -812,6 +814,7 @@
       el("cfgDestinationHost").value = analyzer.resultDestinationHost;
       el("cfgDestinationPort").value = analyzer.resultDestinationPort;
       el("cfgTests").value = (analyzer.supportedTests || []).join(",");
+      el("cfgAcceptUnknownTests").checked = Boolean(analyzer.acceptUnknownTests);
       el("cfgMode").value = analyzer.mode;
       el("cfgExistingAnalyzer").value = analyzer.id;
       el("configStatus").textContent = `Editando ${analyzer.id}`;
@@ -829,6 +832,7 @@
       el("cfgVendor").value = "";
       el("cfgProfile").value = "GENERIC";
       el("cfgTests").value = "";
+      el("cfgAcceptUnknownTests").checked = false;
       el("configStatus").textContent = "Nuevo analizador: aplica una plantilla o completa los datos.";
     }
 
@@ -1075,6 +1079,7 @@
         </td>
         <td>
           ${actionButtons(o)}
+          ${o.pendingCatalogStudies?.length ? `<div class="hint">Recibida. Falta configurar resultados para: ${esc(o.pendingCatalogStudies.join(', '))}. Asígnalos en Catálogo de estudios y vuelve a procesar.</div>` : ""}
           ${o.clinicalInfo ? `<div class="hint">Clinica: ${esc(o.clinicalInfo)}</div>` : ""}
           ${o.observations?.length ? `<div class="hint">Obs: ${esc(o.observations.join(" | "))}</div>` : ""}
           ${Object.keys(o.customFields || {}).length ? `<details class="hint"><summary>Campos propios del equipo (${Object.keys(o.customFields).length})</summary>${Object.entries(o.customFields).map(([key,value]) => `<div><code>${esc(key)}</code>: ${esc(value)}</div>`).join("")}</details>` : ""}
@@ -1113,7 +1118,7 @@
         container.innerHTML = "";
         
         const pathMap = {};
-        ["profilePatientId", "profilePatientName", "profileOrderId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
+        ["profilePatientId", "profilePatientName", "profileOrderId", "profileFillerId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
             const paths = el(id).value.split(",").map(x => x.trim()).filter(Boolean);
             paths.forEach(p => {
                 if (!pathMap[p]) pathMap[p] = [];
@@ -1213,7 +1218,7 @@
         const fixedContainer = document.getElementById('popupFixedContainer');
         if(fixedContainer) fixedContainer.style.display = 'none';
 
-        ["profilePatientId", "profilePatientName", "profileOrderId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
+        ["profilePatientId", "profilePatientName", "profileOrderId", "profileFillerId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
             if(!el(id)) return;
             let val = el(id).value.split(",").map(x=>x.trim());
             const matched = val.find(v => v === path || v.startsWith(path + "."));
@@ -1328,11 +1333,13 @@
             if (inferredType) el("profileInboundType").value = inferredType;
             if (inferredSegments.length) canvasSegments = [...new Set(inferredSegments)];
             applySuggestedInboundMappings(window.currentSemanticTree);
+            window.basicHL7.updateExamples();
             renderCanvas();
             alert("Contrato Inbound guardado en memoria (" + el("profileInboundType").value + "). Haz clic en 'Guardar Perfil' para persistirlo.");
         } else {
             window.savedOutboundSchema = window.currentSemanticTree;
             window.savedOutboundRawHL7 = el('validatorText').value.trim() || null;
+            window.basicHL7.readOutbound({events:{RESULT_FINAL:{segments:structuredSchemaToOutboundSegments(window.currentSemanticTree)}}});
             if (inferredType) el("profileMessageType").value = inferredType;
             
             // Actualizar Lienzo con los segmentos del Outbound schema
@@ -1608,7 +1615,7 @@
             targetPath = activePopupField + "." + subValue;
         }
 
-        ["profilePatientId", "profilePatientName", "profileOrderId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
+        ["profilePatientId", "profilePatientName", "profileOrderId", "profileFillerId", "profileSampleId", "profileTestCode", "profileTestName", "profileResultValue", "profileResultUnit", "profileResultCode", "profileResultDocument"].forEach(id => {
             if(!el(id)) return;
             let paths = el(id).value.split(",").map(x => x.trim()).filter(Boolean);
             paths = paths.filter(p => p !== activePopupField && !p.startsWith(activePopupField + "."));
@@ -1631,10 +1638,10 @@
         }
         el("profileFixedMapping").value = JSON.stringify(fixedMap);
         const sources = {profilePatientId:"patient.id",profilePatientName:"patient.name",profileOrderId:"order.id",
-            profileSampleId:"sample.id",profileTestCode:"test.code",profileTestName:"test.name",profileResultValue:"result.value",
+            profileFillerId:"order.fillerId",profileSampleId:"sample.id",profileTestCode:"test.code",profileTestName:"test.name",profileResultValue:"result.value",
             profileResultCode:"result.code",profileResultUnit:"result.unit",profileResultDocument:"resultDocument.pdfBase64"};
         if (chosenId === "fixedValue") updateSavedOutboundRule(targetPath, null, fixedMap[targetPath]);
-        else if (sources[chosenId]) updateSavedOutboundRule(targetPath, sources[chosenId]);
+        else if (sources[chosenId] && !window.basicHL7.fields.some(f=>f.input===chosenId)) updateSavedOutboundRule(targetPath, sources[chosenId]);
 
         
         closeCanvasPopup();

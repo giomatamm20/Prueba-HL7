@@ -284,7 +284,9 @@ def _infer_field(name: str, number: int, samples: list[HL7Field], required: bool
 
 def _value_rule(path: str, values: list[str]) -> dict[str, Any]:
     base_path = re.sub(r"\[\d+\]", "", path)
-    semantic, datatype = FIELD_METADATA.get(base_path, ("UNKNOWN", "ST"))
+    # A composite field may carry only its first component without a caret.
+    # Keep identifiers dynamic even when the example has no namespace/text.
+    semantic, datatype = FIELD_METADATA.get(base_path, FIELD_METADATA.get(base_path + ".1", ("UNKNOWN", "ST")))
     rule: dict[str, Any] = {
         "required": True,
         "semantic": semantic,

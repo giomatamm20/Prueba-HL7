@@ -143,6 +143,40 @@ El catalogo incluye un analizador `anapath-lis-01` con perfil `ANAPATH`.
 
 ## Comportamiento configurable
 
+### Catálogo y recepción de exámenes desconocidos
+
+El catálogo se configura en cuatro pasos: **Equipo → Exámenes → Resultados →
+Guardar**. En el paso 4, **Guardar y usar en este equipo** guarda los cambios y
+asigna la revisión al analizador seleccionado. Los valores escritos en el
+formulario se incluyen al avanzar o guardar, sin tener que pulsar antes
+«Agregar / actualizar valor». También se puede guardar una revisión sin asignarla.
+Los grupos, escenarios y herramientas de importación quedan como opciones avanzadas.
+
+Para probar solo la recepción HL7, activa **Recibir exámenes aunque no estén en
+el catálogo (solo recepción)** en el paso 1 y pulsa **Guardar opción de recepción**.
+La misma opción está en **Configurar equipo**. No requiere crear un catálogo.
+La API permite guardarla con `PUT /api/analyzers/{id}` y
+`{"acceptUnknownTests": true}`; por defecto está desactivada.
+
+Una orden con un código como `LAB_X6ED9` puede recibirse con ACK positivo y
+quedar en la worklist con `pendingCatalogStudies`. Esta opción solo omite la
+restricción de códigos al recibir HL7: el contrato y las demás validaciones
+siguen vigentes. No cambia la recepción ASTM ni la creación manual de muestras.
+No genera resultados genéricos para esos códigos. Para procesar o enviar
+resultados, configura el examen (o su alias) y sus valores en un catálogo y
+asígnalo al equipo. Al procesar de nuevo la misma orden pendiente, se resuelve
+contra el catálogo asignado. Una plantilla de resultados elegida explícitamente
+en el paso 4 también permite resolver códigos desconocidos. Las órdenes ya
+definidas conservan su revisión y resultados.
+
+Si un perfil de salida requiere `order.fillerId` y la orden recibida no trae
+ORC-3 ni OBR-3, el escritor asigna un identificador propio `SIM-…` basado en el
+identificador interno persistido de la orden. Es estable entre vista previa,
+envíos, reenvíos y reinicios; también funciona con órdenes ya guardadas. Cada
+estudio de una salida multiestudio obtiene su identificador cuando le falta.
+Los identificadores recibidos se conservan; el HL7 original y las fuentes
+`order.orc3`, `order.obr3` e `inbound.*` siguen reflejando exactamente la entrada.
+
 Cada analizador HL7 puede guardar un bloque `behavior` editable desde la UI.
 Esto permite adaptar validaciones y eventos sin cambiar codigo fuente.
 
@@ -233,6 +267,32 @@ OBR|1|ORD1001|SMP1001|CBC^HEMOGRAMA
 ```
 
 ## Contratos HL7 por analizador
+
+El **Diseñador HL7 → Campos básicos del equipo** permite ajustar la base
+inferida de un mensaje sin editar JSON. Para paciente, orden, identificador
+del laboratorio, muestra y examen se configuran por separado:
+
+- **Leer del mensaje recibido**: ruta HL7 y alternativas separadas por coma.
+  El valor encontrado en el ejemplo aparece debajo de la entrada.
+- **Obligatorio al recibir**: exige encontrar el dato en alguna de esas rutas;
+  las reglas estructurales del contrato siguen vigentes.
+- **Devolver en el resultado**: uno o varios destinos independientes de la
+  entrada. Vacío omite ese dato en la salida. También se pueden cambiar los
+  destinos del código, valor y unidad del resultado.
+
+Por ejemplo, `ORC-4.1` puede mapearse como `order.id` para una integración
+que identifica sus órdenes en ese campo, y devolverlo en `ORC-4.1, OBR-2`.
+`OBR-4.1` sigue siendo un campo distinto para el código del examen.
+Si un equipo utiliza ese mismo dato como identificador del laboratorio,
+puede configurar también la entrada de `order.fillerId` en `ORC-4.1`.
+Un dato recibido explícitamente tiene prioridad sobre el identificador
+automático del simulador.
+
+Los cambios se guardan con **Guardar perfil / Actualizar perfil** y se
+recuperan al abrir la revisión. Los cambios de destino actualizan también
+el contrato de salida generado; los grupos de estudios y parámetros se
+conservan. La pantalla detecta ubicaciones inválidas y destinos compartidos
+por datos diferentes antes de guardar.
 
 El Diseñador HL7 permite seleccionar un analizador y pegar un mensaje OML u
 ORU como muestra. El backend infiere y guarda un contrato versionado asociado

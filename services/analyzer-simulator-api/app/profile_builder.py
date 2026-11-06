@@ -35,7 +35,7 @@ def build_profile_message(profile: dict, analyzer: dict, order: dict, results: l
                     context["test"] = {"code": item["code"], "name": item.get("name") or item.get("definition", {}).get("name")}
                     context["sample"] = {**inherited["sample"], **item.get("sample", {}), "id": item.get("sampleId") or inherited["sample"].get("id")}
                     context["order"] = {**inherited["order"], "id": item.get("orderId") or inherited["order"].get("id"),
-                                        "fillerId": item.get("fillerOrderId") or inherited["order"].get("fillerId")}
+                                        "fillerId": _outbound_filler_id(order, item)}
                     children_results = [r for r in scoped_results if r.get("studyKey") == item["key"]]
                 elif repeat == "results":
                     context["result"] = item
@@ -111,6 +111,20 @@ def resolve_value(field: dict, context: dict) -> Any:
     return value
 
 
+def _outbound_filler_id(order: dict, study: dict | None = None) -> str | None:
+    """Assign a stable simulator identifier without rewriting inbound identifiers."""
+    received = study.get("fillerOrderId") if study is not None else order.get("fillerOrderId")
+    multiple_studies = len(order.get("studies") or []) > 1
+    if not received and study is not None and not multiple_studies:
+        received = order.get("fillerOrderId")
+    if received:
+        return received
+    if not order.get("id"):
+        return None
+    suffix = f"-{study['key']}" if study is not None and multiple_studies else ""
+    return f"SIM-{order['id']}{suffix}"
+
+
 def _base_context(analyzer: dict, order: dict, results: list[dict], now: datetime, control_id: str, event: str) -> dict:
     pdf_base64 = _build_pdf_base64(order, "F")
     return {
@@ -124,7 +138,7 @@ def _base_context(analyzer: dict, order: dict, results: list[dict], now: datetim
             "visitNumber": order.get("visitNumber"),
         },
         "order": {
-            "id": order.get("orderId"), "fillerId": order.get("fillerOrderId"), "status": order.get("orderStatus"),
+            "id": order.get("orderId"), "fillerId": _outbound_filler_id(order), "status": order.get("orderStatus"),
             "orc2": order.get("orc2"), "orc3": order.get("orc3"), "orc4": order.get("orc4"),
             "obr2": order.get("obr2"), "obr3": order.get("obr3"),
         },

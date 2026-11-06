@@ -212,7 +212,7 @@ class SimulationEngine:
             self.store.save_analyzer(analyzer)
             return dict(analyzer)
 
-    def _bind_order_catalog(self, order, analyzer):
+    def _bind_order_catalog(self, order, analyzer, receiving=False):
         if analyzer.get("profile") in {"PACS", "ANAPATH"} or analyzer.get("protocol") != "HL7":
             return
         revision = self.catalog_revision(analyzer.get("catalogRevisionId") or "builtin-v1")
@@ -221,11 +221,31 @@ class SimulationEngine:
              "sampleId": order["sampleId"], "sample": {"id": order["sampleId"], "code": order.get("sampleCode"), "name": order.get("sampleName")}}
             for index, code in enumerate(order["requestedTests"], 1)]
         policy = analyzer.get("unknownStudyPolicy") or ("BLOCK" if analyzer.get("catalogRevisionId") else "TEMPLATE")
-        order["studies"] = bind_studies(revision, groups, policy, analyzer.get("genericStudyCode") or "GENERIC")
+        # Accepting an unknown inbound code must not silently invent a result.
+        # Explicitly assigned templates remain an intentional result definition.
+        pending = []
+        if receiving and analyzer.get("acceptUnknownTests") and (policy == "BLOCK" or not analyzer.get("catalogRevisionId")):
+            codes = {alias for study in revision["studies"] for alias in [study["code"], *study.get("aliases", [])]}
+            pending = [group["code"] for group in groups if group["code"] not in codes]
+            known = bind_studies(revision, [g for g in groups if g["code"] in codes], "BLOCK")
+            definitions = {study["key"]: study for study in known}
+            bound = [definitions.get(g["key"], {**copy.deepcopy(g), "definition": None, "fallbackUsed": False}) for g in groups]
+        else:
+            if order.get("pendingCatalogStudies") and not analyzer.get("catalogRevisionId"):
+                policy = "BLOCK"
+            bound = bind_studies(revision, groups, policy, analyzer.get("genericStudyCode") or "GENERIC")
+        order["studies"] = bound
+        order["pendingCatalogStudies"] = list(dict.fromkeys(pending))
         order["catalogRevisionId"] = revision["id"]
         order["catalogVersion"] = revision["version"]
         order["catalogFallbacks"] = [{"studyKey": s["key"], "code": s["code"], "templateCode": s["templateCode"]}
                                     for s in order["studies"] if s["fallbackUsed"]]
+
+    @staticmethod
+    def _require_result_catalog(order):
+        if order.get("pendingCatalogStudies"):
+            raise ValueError("Orden recibida; configure y asigne en el catálogo los exámenes pendientes antes de generar o enviar resultados: "
+                             + ", ".join(order["pendingCatalogStudies"]))
 
     def regenerate_results(self, order_id, scenario="NORMAL"):
         with self._atomic():
@@ -260,6 +280,7 @@ class SimulationEngine:
     def preview_order_results(self, order_id):
         with self.lock:
             order = self._find_order(order_id)
+            self._require_result_catalog(order)
             if not order.get("results"):
                 raise ValueError("Procese la orden para previsualizar los resultados")
             analyzer = self.analyzers[order["analyzerId"]]
@@ -547,7 +568,7 @@ class SimulationEngine:
 
             if analyzer.get("profile") == "ANAPATH":
                 validate_anapath_order(order_payload)
-            elif analyzer.get("profile") != "PACS" and not analyzer.get("catalogRevisionId"):
+            elif analyzer.get("profile") != "PACS" and not analyzer.get("catalogRevisionId") and not analyzer.get("acceptUnknownTests"):
                 unsupported = [
                     test
                     for test in order_payload["requestedTests"]
@@ -570,7 +591,7 @@ class SimulationEngine:
                 if existing["barcode"] != order_payload["barcode"] or existing["patientId"] != order_payload["patientId"]:
                     raise HL7OrderError("Order update cannot change sample or patient identity")
                 replacement = self._order_from_payload(order_payload, analyzer_id, "BIDIRECTIONAL")
-                self._bind_order_catalog(replacement, analyzer)
+                self._bind_order_catalog(replacement, analyzer, receiving=True)
                 replacement["sourceRawMessage"] = raw_message
                 replacement.update({key: existing[key] for key in ("id", "status", "createdAt", "rackPosition")})
                 if active_profile:
@@ -594,7 +615,7 @@ class SimulationEngine:
                 raise HL7OrderError("muestra duplicada")
 
             order = self._order_from_payload(order_payload, analyzer_id, "BIDIRECTIONAL")
-            self._bind_order_catalog(order, analyzer)
+            self._bind_order_catalog(order, analyzer, receiving=True)
             order["sourceRawMessage"] = raw_message
             if active_profile:
                 order["inboundProfileId"] = active_profile["id"]
@@ -861,6 +882,12 @@ class SimulationEngine:
             self._ensure_operational(order["analyzerId"])
             if order["status"] != "SAMPLE_LOADED":
                 raise ValueError("Order is not ready to process")
+            if order.get("pendingCatalogStudies"):
+                try:
+                    self._bind_order_catalog(order, self.analyzers[order["analyzerId"]])
+                except ValueError as error:
+                    raise ValueError("Orden recibida; configure y asigne los exámenes pendientes en el catálogo antes de procesar: "
+                                     + ", ".join(order["pendingCatalogStudies"])) from error
             if result_scenario is not None and order.get("studies"):
                 allowed = {"NORMAL", *[name for study in order["studies"] for name in study["definition"].get("scenarios", {})]}
                 if result_scenario not in allowed:
@@ -1101,6 +1128,7 @@ class SimulationEngine:
         with self._atomic():
             order = self._find_order(order_id)
             self._require_contract(order["analyzerId"])
+            self._require_result_catalog(order)
             if event_type == "REPORT" and order["status"] not in {"RESULT_READY", "COMPLETED", "ERROR"}:
                 raise ValueError("Process the pending order before sending its results")
             self._ensure_operational(order["analyzerId"])
@@ -1305,6 +1333,7 @@ class SimulationEngine:
             "resultDestinationHost": payload.get("resultDestinationHost") or payload.get("result_destination_host") or "localhost",
             "resultDestinationPort": int(payload.get("resultDestinationPort") or payload.get("result_destination_port") or 2575),
             "supportedTests": supported_tests,
+            "acceptUnknownTests": payload.get("acceptUnknownTests", base.get("acceptUnknownTests", False)),
             "profile": profile,
             "behavior": behavior,
             "catalogRevisionId": payload.get("catalogRevisionId") or base.get("catalogRevisionId"),

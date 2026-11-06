@@ -112,6 +112,7 @@ class AnalyzerConfigRequest(BaseModel):
     resultDestinationHost: str = "localhost"
     resultDestinationPort: int = Field(default=2575, ge=1, le=65535)
     supportedTests: list[str] = Field(default_factory=list)
+    acceptUnknownTests: bool = False
     profile: str | None = None
     mode: str = "MANUAL"
     behavior: dict = Field(default_factory=dict)
